@@ -1,4 +1,4 @@
-# Mendix Project Manager
+# Mendix Project And Version Manager (PVM)
 
 A CLI tool for managing Mendix versions and projects.
 
