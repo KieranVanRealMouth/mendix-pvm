@@ -11,7 +11,7 @@ import (
 func ConvertProject(project models.Project, version models.Version) error {
 	mxPath := version.MxPath
 
-	cmd := exec.Command(mxPath, "convert", "--in-place", project.MprPath)
+	cmd := exec.Command(mxPath, "convert", "--in-place", project.Path)
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
