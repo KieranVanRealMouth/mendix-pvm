@@ -3,12 +3,10 @@ package cmd
 import (
 	"fmt"
 	"mendix-pvm/internal/config"
+	"mendix-pvm/internal/operations"
 	"mendix-pvm/internal/project"
 	"mendix-pvm/internal/search"
 	"mendix-pvm/internal/version"
-	"os"
-	"os/exec"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 )
@@ -55,7 +53,7 @@ func runConvert(cmd *cobra.Command, args []string) error {
 			return err
 		}
 
-		if err := convertProject(ver, proj); err != nil {
+		if err := operations.ConvertProject(ver, proj); err != nil {
 			return err
 		}
 
@@ -87,32 +85,4 @@ func getVersion(directory string, arg string) (version.Version, error) {
 	}
 
 	return version.CreateVersion(results[0].Path)
-}
-
-func getExecutable(ver version.Version) (string, error) {
-	executablePath := filepath.Join(ver.Directory, "modeler", "mx.exe")
-	if _, err := os.Stat(executablePath); err != nil {
-		return "", err
-	}
-
-	return executablePath, nil
-}
-
-func convertProject(ver version.Version, proj project.Project) error {
-	fmt.Printf("Converting %s to version %s\n", proj.Name, ver.Name)
-	mxPath, err := getExecutable(ver)
-	if err != nil {
-		return err
-	}
-
-	cmd := exec.Command(mxPath, "convert", "--in-place", proj.Directory)
-
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("conversion failed: %w\nOutput: %s", err, string(output))
-	}
-
-	fmt.Printf("Finished converting\n")
-
-	return nil
 }

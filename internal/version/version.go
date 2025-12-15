@@ -32,3 +32,12 @@ func CreateVersion(p string) (Version, error) {
 
 	return Version{Name: filepath.Base(p), Directory: absolutePath, StudioPro: studioProPath}, nil
 }
+
+func (ver *Version) GetExecutable() (string, error) {
+	executablePath := filepath.Join(ver.Directory, "modeler", "mx.exe")
+	if _, err := os.Stat(executablePath); err != nil {
+		return "", err
+	}
+
+	return executablePath, nil
+}
