@@ -7,6 +7,7 @@ import (
 	"mendix-pvm/internal/project"
 	"mendix-pvm/internal/search"
 	"mendix-pvm/internal/version"
+	"sync"
 
 	"github.com/spf13/cobra"
 )
@@ -47,16 +48,46 @@ func runConvert(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var errors []error
+
+	semaphore := make(chan struct{}, 5)
+
 	for _, result := range results {
-		proj, err := project.CreateProject(result.Path)
-		if err != nil {
-			return err
-		}
+		wg.Add(1)
 
-		if err := operations.ConvertProject(ver, proj); err != nil {
-			return err
-		}
+		semaphore <- struct{}{}
 
+		go func(resultPath string) {
+			defer wg.Done()
+			defer func() { <-semaphore }()
+
+			proj, err := project.CreateProject(result.Path)
+			if err != nil {
+				mu.Lock()
+				errors = append(errors, fmt.Errorf("failed to create project %s: %w", result.Path, err))
+				mu.Unlock()
+				return
+			}
+
+			if err := operations.ConvertProject(ver, proj); err != nil {
+				mu.Lock()
+				errors = append(errors, fmt.Errorf("failed to convert project %s: %w", proj.Name, err))
+				mu.Unlock()
+				return
+			}
+		}(result.Path)
+	}
+
+	wg.Wait()
+
+	if len(errors) > 0 {
+		fmt.Printf("An error occured while attempting to convert projects:\n")
+		fmt.Printf("- Success: %d", len(results)-len(errors))
+		fmt.Printf("- Failed: %d", len(errors))
+		fmt.Printf("- Total: %d", len(results))
+		return fmt.Errorf("conversion completed with %d errors", len(errors))
 	}
 
 	return nil
