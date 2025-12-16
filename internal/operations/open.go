@@ -38,6 +38,7 @@ func FindAndOpenProject(args []string) error {
 	case x <= 0:
 		return fmt.Errorf("no projects found for search query")
 	case x == 1:
+		fmt.Printf("%s", projects[0].Mpr)
 		OpenFile(projects[0].Mpr)
 		return nil
 	case x > 1:
