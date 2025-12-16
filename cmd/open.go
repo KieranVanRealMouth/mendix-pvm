@@ -41,12 +41,11 @@ func runOpen(cmd *cobra.Command, args []string) error {
 	}
 
 	if err := operations.FindAndOpenProject(args); err != nil {
-		return err
-	}
-
-	fmt.Printf("\n")
-
-	if err := operations.FindAndOpenVersion(args); err != nil {
+		// if no project is found, try opening version
+		fmt.Printf("\n")
+		if err := operations.FindAndOpenVersion(args); err != nil {
+			return err
+		}
 		return err
 	}
 

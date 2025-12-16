@@ -34,7 +34,7 @@ func CreateProject(p string) (Project, error) {
 		}
 
 		if filepath.Ext(entry.Name()) == ext {
-			mprPath = entry.Name()
+			mprPath = filepath.Join(absolutePath, entry.Name())
 		}
 	}
 
