@@ -38,14 +38,30 @@ func main() {
 
 	var rootCmd = &cobra.Command{
 		Use:   "mx",
-		Short: "Mendix Project Manager",
-		Long:  `A CLI tool for managing Mendix Studio Pro versions and projects.`,
+		Short: "Manage Mendix Studio Pro versions and projects",
+		Long: `mx is a command-line tool for quickly working with Mendix Studio Pro:
+- Search local Studio Pro versions and Mendix projects
+- Open projects or Studio Pro directly from the terminal
+- Convert projects between Mendix versions
+- Inspect and edit configuration
+
+All commands support flexible searching using name fragments.
+Examples:
+  mx list myapp
+  mx open 10.6
+  mx convert -p MyProject -v 10.10
+`,
 	}
 
 	var configCmd = &cobra.Command{
 		Use:   "config",
-		Short: "Open the config file.",
-		Long:  "Open the config file",
+		Short: "Open the configuration file.",
+		Long: `Opens the Mendix Project Manager configuration file using your default editor.
+
+This allows you to adjust:
+- The directory used to search for Mendix projects
+- The directory containing installed Mendix Studio Pro versions
+- Tool behavior settings`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := config.Open(cfg); err != nil {
 				return fmt.Errorf("An error occured while trying to open the config\n%w", err)
@@ -56,8 +72,20 @@ func main() {
 
 	var listCmd = &cobra.Command{
 		Use:   "list",
-		Short: "Search using arguments",
-		Long:  "Provide any number of arguments to search Mendix projects and versions.",
+		Short: "List Mendix projects and Studio Pro versions",
+		Long: `Search for Mendix projects and/or installed Studio Pro versions.
+
+You may provide any number of search terms. Searches are fuzzy: all terms must match somewhere in the name or path.
+
+Examples:
+  mx list                          # Show all projects and versions
+  mx list widget                   # Match any project/version containing 'widget'
+  mx list 10.6 -v                  # Show only versions matching '10.6'
+  mx list Customer -p              # Show only projects matching 'Customer'
+
+Flags:
+  -p, --project   Search only projects
+  -v, --version   Search only Studio Pro versions`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var (
 				projects []string
@@ -110,8 +138,27 @@ func main() {
 
 	var openCmd = &cobra.Command{
 		Use:   "open",
-		Short: "Open Mendix",
-		Long:  "Open any Mendix project or version by providing arguments (seperated by spaces). When no arguments are provided, the latest version of studio pro is opened. If arguments are provided, only 1 project can be opened at a time, meaning the arguments must be improved to match only 1 result. If the --all flag or -a shorthand is provided, all matching results are opened. A maximum of 3 items can be opened at a time.",
+		Short: "Open a Mendix project or Studio Pro version",
+		Long: `Open a Mendix project or a specific Studio Pro version.
+
+Behavior:
+- No arguments → opens the latest installed Studio Pro.
+- With arguments → fuzzy matches projects and versions.
+- If exactly one match is found → opens it.
+- If multiple matches are found → shows a list unless --all/-a is used.
+- With --all → opens up to 3 matches.
+
+Examples:
+  mx open                       # Open latest Studio Pro
+  mx open MyApp                 # Open the project matching "MyApp"
+  mx open 10.6                  # Open Studio Pro 10.6
+  mx open MyApp --project       # Search only in projects
+  mx open 10 --version -a       # Open up to 3 versions matching "10"
+
+Flags:
+  -p, --project   Limit search to projects
+  -v, --version   Limit search to Studio Pro versions
+  -a, --all       Open all matches (max 3)`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var (
 				projects []string
@@ -190,8 +237,26 @@ func main() {
 
 	var convertCmd = &cobra.Command{
 		Use:   "convert",
-		Short: "Convert Mendix projects from 1 version to another",
-		Long:  "By default only convert 1 Mendix project to the chosen version. Use the --all flag or -a shorthand to convert all matches to the query.",
+		Short: "Convert a Mendix project to another Studio Pro version",
+		Long: `Convert one or multiple Mendix projects to a specific Studio Pro version.
+
+Required flags:
+  --project/-p : Project name (or fragment) used to search for projects
+  --version/-v : Exact target Studio Pro version to convert to (must match 1 installed version)
+
+Behavior:
+- If multiple projects match and --all is not used → a list is shown.
+- If --all is used → all matches are converted.
+- Version must match exactly one Studio Pro installation.
+
+Examples:
+  mx convert -p OrderApp -v 10.10
+  mx convert -p CustomerPortal -v 10.6
+  mx convert -p App -v 10.10 -a    # Convert all matched projects
+
+Notes:
+- Conversion uses Mendix's built-in mx.exe conversion tool.
+- Progress and result codes (success/failure) are shown for each project.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if convertVersion == "" || convertProject == "" {
 				return fmt.Errorf("--version and --project are required")
