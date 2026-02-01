@@ -14,8 +14,11 @@ import (
 )
 
 // TODO: Implement flags and shorthand flags for --project and --version
-// TODO: Implement list UI with selection option
-// TODO: implement TUI for root CMD
+// - For list, this will allow the user to show or the projects only or the versions only
+// - For open, this will only search projects or versions depending on the specified flag
+// - If both are provided, the behavior is as the default behavior is
+// - For convert it's already implemented in it's own specific way
+// - For config, it's not needed
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
@@ -24,9 +27,13 @@ func main() {
 
 	// initialize flags
 	var (
-		convertVersion string
-		convertProject string
-		handleAll      bool
+		convertVersion  string
+		convertProject  string
+		handleAll       bool
+		listProjectOnly bool
+		listVersionOnly bool
+		openProjectOnly bool
+		openVersionOnly bool
 	)
 
 	var rootCmd = &cobra.Command{
@@ -52,14 +59,40 @@ func main() {
 		Short: "Search using arguments",
 		Long:  "Provide any number of arguments to search Mendix projects and versions.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			projects, err := project.Search(cfg.ProjectDirectory, args)
-			if err != nil {
-				return fmt.Errorf("An error occured while trying to search project directory\n%w", err)
-			}
+			var (
+				projects []string
+				versions []string
+				err      error
+			)
 
-			versions, err := version.Search(cfg.VersionDirectory, args)
-			if err != nil {
-				return fmt.Errorf("An error occured while trying to search version directory\n%w", err)
+			// If only --project is provided, search only projects.
+			// If only --version is provided, search only versions.
+			// If both or neither are provided, search both (default behavior).
+			switch {
+			case listProjectOnly && !listVersionOnly:
+				projects, err = project.Search(cfg.ProjectDirectory, args)
+				if err != nil {
+					return fmt.Errorf("An error occured while trying to search project directory\n%w", err)
+				}
+				versions = []string{}
+
+			case listVersionOnly && !listProjectOnly:
+				versions, err = version.Search(cfg.VersionDirectory, args)
+				if err != nil {
+					return fmt.Errorf("An error occured while trying to search version directory\n%w", err)
+				}
+				projects = []string{}
+
+			default:
+				projects, err = project.Search(cfg.ProjectDirectory, args)
+				if err != nil {
+					return fmt.Errorf("An error occured while trying to search project directory\n%w", err)
+				}
+
+				versions, err = version.Search(cfg.VersionDirectory, args)
+				if err != nil {
+					return fmt.Errorf("An error occured while trying to search version directory\n%w", err)
+				}
 			}
 
 			fullList := append(projects, versions...)
@@ -80,14 +113,40 @@ func main() {
 		Short: "Open Mendix",
 		Long:  "Open any Mendix project or version by providing arguments (seperated by spaces). When no arguments are provided, the latest version of studio pro is opened. If arguments are provided, only 1 project can be opened at a time, meaning the arguments must be improved to match only 1 result. If the --all flag or -a shorthand is provided, all matching results are opened. A maximum of 3 items can be opened at a time.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			projects, err := project.Search(cfg.ProjectDirectory, args)
-			if err != nil {
-				return fmt.Errorf("An error occured while trying to search project directory\n%w", err)
-			}
+			var (
+				projects []string
+				versions []string
+				err      error
+			)
 
-			versions, err := version.Search(cfg.VersionDirectory, args)
-			if err != nil {
-				return fmt.Errorf("An error occured while trying to search version directory\n%w", err)
+			// If only --project is provided, search only projects.
+			// If only --version is provided, search only versions.
+			// If both or neither are provided, search both (default behavior).
+			switch {
+			case openProjectOnly && !openVersionOnly:
+				projects, err = project.Search(cfg.ProjectDirectory, args)
+				if err != nil {
+					return fmt.Errorf("An error occured while trying to search project directory\n%w", err)
+				}
+				versions = []string{}
+
+			case openVersionOnly && !openProjectOnly:
+				versions, err = version.Search(cfg.VersionDirectory, args)
+				if err != nil {
+					return fmt.Errorf("An error occured while trying to search version directory\n%w", err)
+				}
+				projects = []string{}
+
+			default:
+				projects, err = project.Search(cfg.ProjectDirectory, args)
+				if err != nil {
+					return fmt.Errorf("An error occured while trying to search project directory\n%w", err)
+				}
+
+				versions, err = version.Search(cfg.VersionDirectory, args)
+				if err != nil {
+					return fmt.Errorf("An error occured while trying to search version directory\n%w", err)
+				}
 			}
 
 			fullList := append(projects, versions...)
@@ -204,7 +263,11 @@ func main() {
 	}
 
 	// COMMAND CALLS
+	listCmd.Flags().BoolVarP(&listProjectOnly, "project", "p", false, "Show projects only")
+	listCmd.Flags().BoolVarP(&listVersionOnly, "version", "v", false, "Show Studio Pro versions only")
 
+	openCmd.Flags().BoolVarP(&openProjectOnly, "project", "p", false, "Limit search to projects only")
+	openCmd.Flags().BoolVarP(&openVersionOnly, "version", "v", false, "Limit search to Studio Pro versions only")
 	openCmd.Flags().BoolVarP(
 		&handleAll,
 		"all",
