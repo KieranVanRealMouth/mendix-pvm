@@ -34,6 +34,8 @@ func main() {
 		listVersionOnly bool
 		openProjectOnly bool
 		openVersionOnly bool
+		pathProjectOnly bool
+		pathVersionOnly bool
 	)
 
 	var rootCmd = &cobra.Command{
@@ -160,40 +162,9 @@ Flags:
   -v, --version   Limit search to Studio Pro versions
   -a, --all       Open all matches (max 3)`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var (
-				projects []string
-				versions []string
-				err      error
-			)
-
-			// If only --project is provided, search only projects.
-			// If only --version is provided, search only versions.
-			// If both or neither are provided, search both (default behavior).
-			switch {
-			case openProjectOnly && !openVersionOnly:
-				projects, err = project.Search(cfg.ProjectDirectory, args)
-				if err != nil {
-					return fmt.Errorf("An error occured while trying to search project directory\n%w", err)
-				}
-				versions = []string{}
-
-			case openVersionOnly && !openProjectOnly:
-				versions, err = version.Search(cfg.VersionDirectory, args)
-				if err != nil {
-					return fmt.Errorf("An error occured while trying to search version directory\n%w", err)
-				}
-				projects = []string{}
-
-			default:
-				projects, err = project.Search(cfg.ProjectDirectory, args)
-				if err != nil {
-					return fmt.Errorf("An error occured while trying to search project directory\n%w", err)
-				}
-
-				versions, err = version.Search(cfg.VersionDirectory, args)
-				if err != nil {
-					return fmt.Errorf("An error occured while trying to search version directory\n%w", err)
-				}
+			projects, versions, err := searchTargets(cfg, args, openProjectOnly, openVersionOnly)
+			if err != nil {
+				return err
 			}
 
 			fullList := append(projects, versions...)
@@ -231,6 +202,48 @@ Flags:
 				OpenProjectOrVersion(item, cmd)
 			}
 
+			return nil
+		},
+	}
+
+	var pathCmd = &cobra.Command{
+		Use:   "path",
+		Short: "Print the directory for a project or Studio Pro version",
+		Long: `Resolve a single project or Studio Pro version directory and print it.
+
+Behavior:
+- Searches projects and versions (unless --project/--version is used).
+- Requires exactly one match; zero or multiple matches return an error.
+
+Examples:
+	cd "$(mx path next dev)"
+	cd "$(mx path MyApp --project)"
+	cd "$(mx path 10.10 --version)"
+
+Flags:
+  -p, --project   Limit search to projects
+  -v, --version   Limit search to Studio Pro versions`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projects, versions, err := searchTargets(cfg, args, pathProjectOnly, pathVersionOnly)
+			if err != nil {
+				return err
+			}
+
+			fullList := append(projects, versions...)
+			if len(fullList) == 0 {
+				return fmt.Errorf("no matches found")
+			}
+			if len(fullList) > 1 {
+				sb := ui.List(fullList)
+				cmd.Print(sb.String())
+				return fmt.Errorf("multiple matches (%d). refine your arguments", len(fullList))
+			}
+
+			terminalPath, err := resolveTerminalPath(fullList[0])
+			if err != nil {
+				return err
+			}
+			cmd.Println(terminalPath)
 			return nil
 		},
 	}
@@ -341,6 +354,9 @@ Notes:
 		"Perform action for all matching results (might be limited depending on the load a command creates)",
 	)
 
+	pathCmd.Flags().BoolVarP(&pathProjectOnly, "project", "p", false, "Limit search to projects only")
+	pathCmd.Flags().BoolVarP(&pathVersionOnly, "version", "v", false, "Limit search to Studio Pro versions only")
+
 	convertCmd.Flags().StringVarP(&convertVersion, "version", "v", "", "Mendix Studio Pro version to use for conversion")
 	convertCmd.Flags().StringVarP(&convertProject, "project", "p", "", "Project filter (name or path segment) to convert")
 	_ = convertCmd.MarkFlagRequired("version")
@@ -350,12 +366,68 @@ Notes:
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(openCmd)
+	rootCmd.AddCommand(pathCmd)
 	rootCmd.AddCommand(convertCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
+}
+
+func searchTargets(cfg *config.Config, args []string, projectOnly bool, versionOnly bool) ([]string, []string, error) {
+	var (
+		projects []string
+		versions []string
+		err      error
+	)
+
+	// If only --project is provided, search only projects.
+	// If only --version is provided, search only versions.
+	// If both or neither are provided, search both (default behavior).
+	switch {
+	case projectOnly && !versionOnly:
+		projects, err = project.Search(cfg.ProjectDirectory, args)
+		if err != nil {
+			return nil, nil, fmt.Errorf("An error occured while trying to search project directory\n%w", err)
+		}
+		versions = []string{}
+
+	case versionOnly && !projectOnly:
+		versions, err = version.Search(cfg.VersionDirectory, args)
+		if err != nil {
+			return nil, nil, fmt.Errorf("An error occured while trying to search version directory\n%w", err)
+		}
+		projects = []string{}
+
+	default:
+		projects, err = project.Search(cfg.ProjectDirectory, args)
+		if err != nil {
+			return nil, nil, fmt.Errorf("An error occured while trying to search project directory\n%w", err)
+		}
+
+		versions, err = version.Search(cfg.VersionDirectory, args)
+		if err != nil {
+			return nil, nil, fmt.Errorf("An error occured while trying to search version directory\n%w", err)
+		}
+	}
+
+	return projects, versions, nil
+}
+
+func resolveTerminalPath(path string) (string, error) {
+	mprPath, err := project.FindMprAtRoot(path)
+	if err != nil {
+		return "", err
+	}
+	if mprPath != "" {
+		return path, nil
+	}
+
+	if _, err := version.FindModelerSubdir(path); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 func OpenProjectOrVersion(path string, cmd *cobra.Command) error {
