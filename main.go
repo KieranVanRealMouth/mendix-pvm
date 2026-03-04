@@ -243,7 +243,7 @@ Flags:
 			if err != nil {
 				return err
 			}
-			cmd.Println(terminalPath)
+			fmt.Println(terminalPath)
 			return nil
 		},
 	}
