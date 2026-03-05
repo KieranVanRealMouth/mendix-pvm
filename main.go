@@ -6,9 +6,10 @@ import (
 	"mendix-pvm/convert"
 	"mendix-pvm/project"
 	"mendix-pvm/ui"
-
-	"mendix-pvm/version"
-	"os"
+	"strings"
+		Use:   "convert [additional search terms...]",
+		Short: "Convert Mendix projects to a different Studio Pro version",
+		Long: `Convert Mendix projects to a specified Studio Pro version.
 
 	"github.com/spf13/cobra"
 )
@@ -520,8 +521,15 @@ SEQUENCE WITH --all FLAG:
 				return nil
 			}
 
-			// may be 1 or many depending on --all
-			projects, err := project.Search(cfg.ProjectDirectory, []string{convertProject})
+			// Combine --project flag and positional arguments for search
+			var projectTokens []string
+			if convertProject != "" {
+				projectTokens = append(projectTokens, strings.Fields(convertProject)...)
+			}
+			if len(args) > 0 {
+				projectTokens = append(projectTokens, args...)
+			}
+			projects, err := project.Search(cfg.ProjectDirectory, projectTokens)
 			if err != nil {
 				return fmt.Errorf("An error occured while trying to search project directory\n%w", err)
 			}
