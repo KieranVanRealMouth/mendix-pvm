@@ -6,10 +6,9 @@ import (
 	"mendix-pvm/convert"
 	"mendix-pvm/project"
 	"mendix-pvm/ui"
+	"mendix-pvm/version"
+	"os"
 	"strings"
-		Use:   "convert [additional search terms...]",
-		Short: "Convert Mendix projects to a different Studio Pro version",
-		Long: `Convert Mendix projects to a specified Studio Pro version.
 
 	"github.com/spf13/cobra"
 )
