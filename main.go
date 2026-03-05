@@ -41,29 +41,69 @@ func main() {
 	var rootCmd = &cobra.Command{
 		Use:   "mx",
 		Short: "Manage Mendix Studio Pro versions and projects",
-		Long: `mx is a command-line tool for quickly working with Mendix Studio Pro:
-- Search local Studio Pro versions and Mendix projects
-- Open projects or Studio Pro directly from the terminal
-- Convert projects between Mendix versions
-- Inspect and edit configuration
+		Long: `mx is a command-line tool for managing Mendix Studio Pro installations and projects.
 
-All commands support flexible searching using name fragments.
-Examples:
-  mx list myapp
-  mx open 10.6
-  mx convert -p MyProject -v 10.10
+AVAILABLE COMMANDS:
+  list      List and search for Mendix projects and Studio Pro versions
+  open      Open a Mendix project or launch a Studio Pro version
+  path      Print the full directory path of a project or Studio Pro version
+  convert   Convert Mendix projects to a different Studio Pro version
+  config    Open and edit the configuration file
+  help      Display help information for any command
+
+SEARCH BEHAVIOR:
+All commands support case-insensitive fuzzy searching:
+- Search terms match anywhere in project/version names and paths
+- Multiple search terms must all match (AND logic)
+- Version searches match Studio Pro version numbers (e.g., "10.6", "9.24")
+- Project searches match against project folder names and paths
+
+CONFIGURATION:
+The tool searches in directories configured via 'mx config':
+- Project directory: Where Mendix project folders are located
+- Version directory: Where Studio Pro installations are stored
+
+EXAMPLES:
+  mx list                              # List all projects and versions
+  mx list myapp                        # Search projects and versions containing "myapp"
+  mx open 10.6                         # Open Studio Pro 10.6
+  mx open MyProject                    # Open project "MyProject"
+  mx path MyApp --project              # Print project directory path
+  mx convert -p MyProject -v 10.10     # Convert project to version 10.10
+  mx convert --project=MyApp --version=10.24  # Convert using equals syntax
+  mx config                            # Edit configuration
+
+For detailed help on any command, use: mx [command] --help
 `,
 	}
 
 	var configCmd = &cobra.Command{
 		Use:   "config",
-		Short: "Open the configuration file.",
-		Long: `Opens the Mendix Project Manager configuration file using your default editor.
+		Short: "Open the configuration file",
+		Long: `Opens the Mendix Project Manager configuration file in your system's default text editor.
 
-This allows you to adjust:
-- The directory used to search for Mendix projects
-- The directory containing installed Mendix Studio Pro versions
-- Tool behavior settings`,
+The configuration file is a JSON file that controls:
+
+PROJECT DIRECTORY:
+  Path where the tool searches for Mendix project folders.
+  Projects are identified by the presence of .mpr files.
+
+VERSION DIRECTORY:
+  Path where Mendix Studio Pro installations are located.
+  Typically contains folders like "10.6.0.12345", "9.24.1.12345", etc.
+
+AFTER EDITING:
+- Save the file to apply changes
+- Changes take effect immediately on next command
+- Invalid paths will cause errors when running other commands
+
+USAGE:
+  mx config                        # Open config file for editing
+
+NOTES:
+- The config file location is platform-specific
+- Ensure directories use proper path separators for your OS
+- Both absolute and relative paths are supported`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := config.Open(cfg); err != nil {
 				return fmt.Errorf("An error occured while trying to open the config\n%w", err)
@@ -73,21 +113,49 @@ This allows you to adjust:
 	}
 
 	var listCmd = &cobra.Command{
-		Use:   "list",
+		Use:   "list [search terms...]",
 		Short: "List Mendix projects and Studio Pro versions",
-		Long: `Search for Mendix projects and/or installed Studio Pro versions.
+		Long: `Search and display Mendix projects and/or installed Studio Pro versions.
 
-You may provide any number of search terms. Searches are fuzzy: all terms must match somewhere in the name or path.
+SEARCH BEHAVIOR:
+- Without arguments: Lists all available projects and versions
+- With arguments: Filters results using case-insensitive substring matching
+- Multiple search terms: All terms must match (AND logic)
+- Matches against: Project/version names and full directory paths
 
-Examples:
-  mx list                          # Show all projects and versions
-  mx list widget                   # Match any project/version containing 'widget'
-  mx list 10.6 -v                  # Show only versions matching '10.6'
-  mx list Customer -p              # Show only projects matching 'Customer'
+OUTPUT FORMAT:
+- Projects and versions are displayed in a formatted list
+- Each item shows the full path
+- Projects are identified by containing .mpr files
+- Versions show the Studio Pro installation directory
 
-Flags:
-  -p, --project   Search only projects
-  -v, --version   Search only Studio Pro versions`,
+AVAILABLE OPTIONS:
+  -p, --project    Search and display only Mendix projects
+                   (excludes Studio Pro versions from results)
+
+  -v, --version    Search and display only Studio Pro versions
+                   (excludes projects from results)
+
+FLAG COMBINATIONS:
+  (no flags)       Search both projects and versions (default)
+  -p               Search only projects
+  -v               Search only versions
+  -p -v            Search both projects and versions (same as default)
+
+EXAMPLES:
+  mx list                          # Display all projects and versions
+  mx list widget                   # Find projects/versions containing "widget"
+  mx list 10.6                     # Find items containing "10.6"
+  mx list 10.6 -v                  # Find only Studio Pro 10.6 versions
+  mx list Customer -p              # Find only projects with "Customer" in path
+  mx list myapp dev                # Find items containing both "myapp" AND "dev"
+  mx list -p                       # Show all projects only
+  mx list -v                       # Show all Studio Pro versions only
+
+NOTES:
+- Searches are case-insensitive
+- Returns "No matches found." if no results match the criteria
+- Results are not opened/executed, only displayed`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var (
 				projects []string
@@ -139,28 +207,64 @@ Flags:
 	}
 
 	var openCmd = &cobra.Command{
-		Use:   "open",
+		Use:   "open [search terms...]",
 		Short: "Open a Mendix project or Studio Pro version",
-		Long: `Open a Mendix project or a specific Studio Pro version.
+		Long: `Open a Mendix project file or launch a Studio Pro version.
 
-Behavior:
-- No arguments → opens the latest installed Studio Pro.
-- With arguments → fuzzy matches projects and versions.
-- If exactly one match is found → opens it.
-- If multiple matches are found → shows a list unless --all/-a is used.
-- With --all → opens up to 3 matches.
+BASIC BEHAVIOR:
+- Without arguments: Opens the first Studio Pro version found in configured directory
+- With arguments: Searches for matching projects/versions using case-insensitive matching
+- Single match: Opens immediately without confirmation
+- Multiple matches: Displays list and requires refinement (unless --all is used)
+- Maximum opens with --all: 3 items (safety limit to prevent opening too many)
 
-Examples:
-  mx open                       # Open latest Studio Pro
-  mx open MyApp                 # Open the project matching "MyApp"
-  mx open 10.6                  # Open Studio Pro 10.6
-  mx open MyApp --project       # Search only in projects
-  mx open 10 --version -a       # Open up to 3 versions matching "10"
+OPENING BEHAVIOR:
+- Projects: Launches the .mpr file using the associated Studio Pro version
+- Versions: Starts the Studio Pro modeler.exe without opening a project
+- Each item opens asynchronously (command returns immediately)
 
-Flags:
-  -p, --project   Limit search to projects
-  -v, --version   Limit search to Studio Pro versions
-  -a, --all       Open all matches (max 3)`,
+AVAILABLE OPTIONS:
+  -p, --project    Search only Mendix projects
+                   (excludes Studio Pro versions from search)
+
+  -v, --version    Search only Studio Pro versions
+                   (excludes projects from search)
+
+  -a, --all        Open all matching results (maximum 3)
+                   Use this when multiple matches are found
+                   Opens items sequentially
+
+FLAG COMBINATIONS:
+  (no flags)       Search both projects and versions (default)
+  -p               Search only projects
+  -v               Search only versions
+  -p -v            Search both (same as default)
+  -a               Apply action to up to 3 matches
+  -p -a            Open up to 3 matching projects
+  -v -a            Open up to 3 matching versions
+
+EXAMPLES:
+  mx open                          # Open first Studio Pro version found
+  mx open MyApp                    # Open project "MyApp" (if unique match)
+  mx open 10.6                     # Open Studio Pro 10.6
+  mx open 10.6 -v                  # Open Studio Pro 10.6 (versions only)
+  mx open Customer -p              # Open project with "Customer" in path
+  mx open MyApp --project          # Search only projects for "MyApp"
+  mx open 10 -v -a                 # Open up to 3 Studio Pro versions matching "10"
+  mx open widget                   # Search projects and versions for "widget"
+  mx open myapp dev -p             # Find project matching both "myapp" AND "dev"
+
+MULTIPLE MATCHES:
+When multiple items match without --all flag:
+- All matches are displayed in a list
+- Command exits with instructions
+- Options: Refine search terms or use --all/-a flag
+
+NOTES:
+- Search is case-insensitive
+- Returns "No matches found." if no results match
+- With --all, shows count when more than 3 matches exist
+- Each opened item runs independently in a new process`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projects, versions, err := searchTargets(cfg, args, openProjectOnly, openVersionOnly)
 			if err != nil {
@@ -207,22 +311,70 @@ Flags:
 	}
 
 	var pathCmd = &cobra.Command{
-		Use:   "path",
-		Short: "Print the directory for a project or Studio Pro version",
-		Long: `Resolve a single project or Studio Pro version directory and print it.
+		Use:   "path <search terms...>",
+		Short: "Print the directory path of a project or Studio Pro version",
+		Long: `Resolve and print the full directory path of a single Mendix project or Studio Pro version.
 
-Behavior:
-- Searches projects and versions (unless --project/--version is used).
-- Requires exactly one match; zero or multiple matches return an error.
+PURPOSE:
+Designed for scripting and command-line integration. Outputs the absolute directory path
+to stdout, which can be used with cd, file operations, or other command-line tools.
 
-Examples:
-	cd "$(mx path next dev)"
-	cd "$(mx path MyApp --project)"
-	cd "$(mx path 10.10 --version)"
+BEHAVIOR:
+- Searches for projects and/or versions using provided search terms
+- Requires EXACTLY ONE match (strict requirement)
+- Zero matches: Returns error "no matches found"
+- Multiple matches: Displays list and returns error with match count
+- Success: Prints the full absolute directory path to stdout
 
-Flags:
-  -p, --project   Limit search to projects
-  -v, --version   Limit search to Studio Pro versions`,
+OUTPUT:
+- Projects: Path to the project root directory (containing .mpr file)
+- Versions: Path to the Studio Pro installation directory (containing modeler.exe)
+- Format: Absolute path with platform-specific separators
+- No trailing slash or newline (clean output for scripting)
+
+AVAILABLE OPTIONS:
+  -p, --project    Search only Mendix projects
+                   (excludes Studio Pro versions from search)
+
+  -v, --version    Search only Studio Pro versions
+                   (excludes projects from search)
+
+FLAG COMBINATIONS:
+  (no flags)       Search both projects and versions (default)
+  -p               Search only projects
+  -v               Search only versions
+  -p -v            Search both (same as default)
+
+EXAMPLES:
+  Basic usage:
+    mx path MyApp                      # Print path to "MyApp" project
+    mx path 10.6 -v                    # Print path to Studio Pro 10.6
+    mx path Customer -p                # Print path to Customer project
+    mx path 10.6 --version             # Print path to Studio Pro 10.6
+
+  Shell integration (PowerShell):
+    cd $(mx path MyApp)                # Change to project directory
+    cd $(mx path 10.10 --version)      # Change to Studio Pro directory
+    $projPath = mx path MyApp -p       # Store path in variable
+
+  Shell integration (Bash/Unix):
+    cd "$(mx path MyApp)"
+    cd "$(mx path next dev --project)"
+
+  Complex searches:
+    mx path customer portal -p         # Find project matching both terms
+    mx path 10.6.0 -v                  # Find specific version
+
+ERROR HANDLING:
+- No matches: Exits with error code and message
+- Multiple matches: Shows list of all matches and exits with error
+- Invalid path: Returns error if matched item doesn't exist
+
+NOTES:
+- Search is case-insensitive
+- Requires at least one search term (path cannot list all items)
+- Useful for automation, CI/CD pipelines, and shell scripting
+- Output is designed to be machine-readable (no extra formatting)`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projects, versions, err := searchTargets(cfg, args, pathProjectOnly, pathVersionOnly)
 			if err != nil {
@@ -249,27 +401,105 @@ Flags:
 	}
 
 	var convertCmd = &cobra.Command{
-		Use:   "convert",
-		Short: "Convert a Mendix project to another Studio Pro version",
-		Long: `Convert one or multiple Mendix projects to a specific Studio Pro version.
+		Use:   "convert --project <search> --version <version>",
+		Short: "Convert Mendix projects to a different Studio Pro version",
+		Long: `Convert one or more Mendix projects to a target Studio Pro version using Mendix's mx.exe tool.
 
-Required flags:
-  --project/-p : Project name (or fragment) used to search for projects
-  --version/-v : Exact target Studio Pro version to convert to (must match 1 installed version)
+REQUIRED FLAGS:
+  -p, --project <search>     Project search term to find projects to convert
+                             Searches project names and paths (case-insensitive)
+                             Multiple words match with AND logic
+                             Use quotes for values with spaces
 
-Behavior:
-- If multiple projects match and --all is not used → a list is shown.
-- If --all is used → all matches are converted.
-- Version must match exactly one Studio Pro installation.
+  -v, --version <version>    Target Studio Pro version for conversion
+                             Must match EXACTLY ONE installed Studio Pro version
+                             Example: "10.10", "9.24", "10.6.0"
 
-Examples:
-  mx convert -p OrderApp -v 10.10
-  mx convert -p CustomerPortal -v 10.6
-  mx convert -p App -v 10.10 -a    # Convert all matched projects
+OPTIONAL FLAGS:
+  -a, --all                  Convert ALL matching projects without confirmation
+                             Default: Only converts first match if multiple found
+                             No limit on number of conversions with this flag
 
-Notes:
-- Conversion uses Mendix's built-in mx.exe conversion tool.
-- Progress and result codes (success/failure) are shown for each project.`,
+FLAG SYNTAX:
+Both space-separated and equals syntax are supported:
+  --project MyApp            # Space-separated
+  --project=MyApp            # Equals syntax
+  --project="My App"         # Equals with quotes (recommended for spaces)
+  -p MyApp                   # Short flag with space
+  -p=MyApp                   # Short flag with equals
+
+CONVERSION PROCESS:
+1. Searches for projects matching --project argument
+2. Validates that --version matches exactly one Studio Pro installation
+3. If single project match or --all flag: proceeds with conversion
+4. If multiple matches without --all: displays list and exits
+5. For each project: Calls mx.exe from the target Studio Pro version
+6. Displays progress and results for each conversion
+
+EXIT CODES (per project):
+  0 = Success: Project converted successfully
+  1 = Internal error: mx.exe encountered an internal error
+  2 = Option error: Invalid options passed to mx.exe
+  3 = Conversion failed: Project conversion failed
+ -1 = Execution error: Failed to start/execute mx.exe
+
+BEHAVIOR DETAILS:
+- Version must match exactly one installation (prevents ambiguity)
+- Multiple version matches: Displays list and exits with error
+- Projects are converted sequentially, not in parallel
+- Each conversion shows: project name, progress (N/M), and result
+- With --all: Continues converting remaining projects even if one fails
+- Without --all: Stops on first error
+
+EXAMPLES:
+  Basic single project conversion:
+    mx convert -p OrderApp -v 10.10
+    mx convert --project CustomerPortal --version 10.6
+    mx convert --project=MyApp --version=10.12.1
+
+  Using equals syntax (recommended for clarity):
+    mx convert --project="Order App" --version=10.10
+    mx convert --project="Customer Portal" --version="10.6"
+    mx convert -p=MyApp -v=10.24
+
+  Projects with spaces in search term:
+    mx convert --project="My Project" --version=10.24
+    mx convert --project "My Project" --version 10.24
+
+  Version with full number:
+    mx convert --project=MyApp --version=10.24.1.12345
+
+  Convert multiple matching projects:
+    mx convert -p CustomerApp -v 10.10 -a
+    mx convert --project=widget --version=9.24 --all
+    mx convert --project="Customer App" --version=10.10 --all
+
+  Convert with multiple search terms:
+    mx convert -p "customer portal" -v 10.10    # Matches "customer" AND "portal"
+    mx convert --project=myapp --version=10.6
+
+IMPORTANT NOTES:
+- BACKUP RECOMMENDED: Always backup projects before conversion
+- Conversion is IRREVERSIBLE: Cannot downgrade using this tool
+- Studio Pro must be closed: Close target version before converting
+- Large projects: Conversion may take several minutes
+- Version compatibility: Ensure target version supports your project features
+- mx.exe location: Found in Studio Pro installation's modeler directory
+
+TROUBLESHOOTING:
+- "No version matches found": Install target Studio Pro version first
+- "Multiple version matches": Refine --version to match exactly one
+- "No project matches found": Check --project search term and config paths
+- Exit code 3: Check Studio Pro logs for specific conversion errors
+- Exit code 2: Verify mx.exe is compatible with the project type
+
+SEQUENCE WITH --all FLAG:
+  (1/3) Converting project: C:\Projects\App1
+  Finished converting: C:\Projects\App1 (success)
+  (2/3) Converting project: C:\Projects\App2
+  Finished converting: C:\Projects\App2 (success)
+  (3/3) Converting project: C:\Projects\App3
+  Conversion failed: C:\Projects\App3`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if convertVersion == "" || convertProject == "" {
 				return fmt.Errorf("--version and --project are required")
