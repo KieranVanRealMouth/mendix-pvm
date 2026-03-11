@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"mendix-pvm/config"
 	"mendix-pvm/convert"
+	"mendix-pvm/platform"
 	"mendix-pvm/project"
 	"mendix-pvm/ui"
 	"mendix-pvm/version"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/spf13/cobra"
 )
@@ -48,6 +50,7 @@ Commands:
 	open      Open a project or Studio Pro version
 	path      Print directory path of a project/version
 	convert   Convert projects to another Studio Pro version
+	sync      Sync apps from the Mendix Platform
 	config    Edit configuration file
 
 Options:
@@ -59,6 +62,7 @@ Examples:
 	mx open 10.6
 	mx path MyApp --project
 	mx convert -p MyApp -v 10.10
+	mx sync
 	mx config
 	mx [command] --help (for details)
 `,
@@ -347,6 +351,75 @@ Notes:
 		},
 	}
 
+	var syncCmd = &cobra.Command{
+		Use:   "sync",
+		Short: "Sync apps from the Mendix Platform",
+		Long: `Fetch all accessible Mendix apps from the Mendix Platform and
+store their names and Git repository URLs in the local config.
+
+Requires your Mendix User ID (OpenID) in the config and the MX_PAT environment
+variable to be set.
+
+Your User ID can be found in the Mendix Portal:
+  1. Click your profile picture (top right)
+  2. Go to User Settings
+  3. Open the Personal Data tab
+  4. Copy the value in the OpenID row
+
+Run 'mx config' to set the User ID, or re-run the CLI setup to configure both.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			pat := os.Getenv("MX_PAT")
+			if cfg.UserID == "" || pat == "" {
+				return fmt.Errorf("Mendix credentials are not configured. Ensure your User ID is set in the config ('mx config') and MX_PAT is set as an environment variable.")
+			}
+
+			ctx := cmd.Context()
+
+			cmd.Println("Fetching projects...")
+			projects, err := platform.GetUserProjects(ctx, pat, cfg.UserID)
+			if err != nil {
+				return fmt.Errorf("failed to fetch projects: %w", err)
+			}
+
+			var (
+				mu        sync.Mutex
+				apps      []config.App
+				wg        sync.WaitGroup
+				semaphore = make(chan struct{}, 10)
+			)
+
+			for _, p := range projects {
+				wg.Add(1)
+				go func(proj platform.Project) {
+					defer wg.Done()
+					semaphore <- struct{}{}
+					defer func() { <-semaphore }()
+
+					info, err := platform.GetRepositoryInfo(ctx, pat, proj.ProjectID)
+					if err != nil {
+						cmd.Printf("Warning: could not fetch repository info for %q: %v\n", proj.Name, err)
+						return
+					}
+					if info.Type != "git" {
+						return
+					}
+
+					mu.Lock()
+					apps = append(apps, config.App{Name: proj.Name, RepositoryURL: info.URL})
+					mu.Unlock()
+				}(p)
+			}
+			wg.Wait()
+
+			if err := cfg.SetApps(apps); err != nil {
+				return fmt.Errorf("failed to save apps: %w", err)
+			}
+
+			cmd.Printf("Synced %d Git app(s).\n", len(apps))
+			return nil
+		},
+	}
+
 	// COMMAND CALLS
 	listCmd.Flags().BoolVarP(&listProjectOnly, "project", "p", false, "Show projects only")
 	listCmd.Flags().BoolVarP(&listVersionOnly, "version", "v", false, "Show Studio Pro versions only")
@@ -375,6 +448,7 @@ Notes:
 	rootCmd.AddCommand(openCmd)
 	rootCmd.AddCommand(pathCmd)
 	rootCmd.AddCommand(convertCmd)
+	rootCmd.AddCommand(syncCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
