@@ -6,11 +6,13 @@ import (
 	"mendix-pvm/convert"
 	"mendix-pvm/platform"
 	"mendix-pvm/project"
+	"mendix-pvm/search"
 	"mendix-pvm/ui"
 	"mendix-pvm/version"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/spf13/cobra"
 )
@@ -29,15 +31,17 @@ func main() {
 
 	// initialize flags
 	var (
-		convertVersion  string
-		convertProject  string
-		handleAll       bool
-		listProjectOnly bool
-		listVersionOnly bool
-		openProjectOnly bool
-		openVersionOnly bool
-		pathProjectOnly bool
-		pathVersionOnly bool
+		convertVersion   string
+		convertProject   string
+		handleAll        bool
+		listProjectOnly  bool
+		listVersionOnly  bool
+		openProjectOnly  bool
+		openVersionOnly  bool
+		pathProjectOnly  bool
+		pathVersionOnly  bool
+		branchRepository string
+		branchName       string
 	)
 
 	var rootCmd = &cobra.Command{
@@ -372,50 +376,109 @@ Run 'mx config' to set the User ID, or re-run the CLI setup to configure both.`,
 			if cfg.UserID == "" || pat == "" {
 				return fmt.Errorf("Mendix credentials are not configured. Ensure your User ID is set in the config ('mx config') and MX_PAT is set as an environment variable.")
 			}
+			return platform.Sync(cmd.Context(), cfg, pat, func(s string) { cmd.Println(s) })
+		},
+	}
 
-			ctx := cmd.Context()
+	var branchCmd = &cobra.Command{
+		Use:   "branch",
+		Short: "Manage Mendix app branches",
+		Long: `Commands for working with Mendix application branches.
 
-			cmd.Println("Fetching projects...")
-			projects, err := platform.GetUserProjects(ctx, pat, cfg.UserID)
-			if err != nil {
-				return fmt.Errorf("failed to fetch projects: %w", err)
+Commands:
+    checkout    Clone a branch from a Mendix app repository
+
+Examples:
+    mx branch checkout -r "Approval Tool" -b feat/my-feature
+`,
+	}
+
+	var checkoutCmd = &cobra.Command{
+		Use:   "checkout",
+		Short: "Clone a branch from a Mendix app's remote repository",
+		Long: `Clone a single branch from a Mendix app's remote Git repository
+into a new directory inside your configured projects directory.
+
+The repository flag accepts a search query; the app name must contain the
+provided string. If no matching app is found in the local config, a sync is
+performed automatically before retrying.
+
+Branch directories are created as:
+    <App Name>-<branch_name>   (forward slashes in branch names become underscores)
+
+Required:
+    --repository, -r   Search query to identify the app
+    --branch, -b       Branch name to clone
+
+Examples:
+    mx branch checkout -r "Approval Tool" -b feat/my-feature
+    mx branch checkout --repository "Order" --branch main
+`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			pat := os.Getenv("MX_PAT")
+
+			// 1. Search current config
+			matches := search.SearchApps(cfg.Apps, branchRepository)
+
+			// 2. If no match, sync and retry
+			if len(matches) == 0 {
+				if cfg.UserID == "" || pat == "" {
+					return fmt.Errorf("repository %q not found in config and Mendix credentials are not set; cannot sync", branchRepository)
+				}
+				cmd.Printf("Repository %q not found in config. Syncing...\n", branchRepository)
+				if err := platform.Sync(cmd.Context(), cfg, pat, func(s string) { cmd.Println(s) }); err != nil {
+					return fmt.Errorf("sync failed: %w", err)
+				}
+				matches = search.SearchApps(cfg.Apps, branchRepository)
 			}
 
-			var (
-				mu        sync.Mutex
-				apps      []config.App
-				wg        sync.WaitGroup
-				semaphore = make(chan struct{}, 10)
+			// 3. Exit conditions
+			if len(matches) == 0 {
+				return fmt.Errorf("no repository found matching %q", branchRepository)
+			}
+			if len(matches) > 1 {
+				var names []string
+				for _, m := range matches {
+					names = append(names, m.Name)
+				}
+				return fmt.Errorf("multiple repositories match %q: %s\nRefine your --repository query", branchRepository, strings.Join(names, ", "))
+			}
+
+			app := matches[0]
+
+			// 4. Build destination directory path
+			safeBranch := strings.ReplaceAll(branchName, "/", "_")
+			dirName := app.Name + "-" + safeBranch
+			destDir := filepath.Join(cfg.ProjectDirectory, dirName)
+
+			// 5. Clone
+			cmd.Printf("Cloning branch %q of %q into:\n  %s\n", branchName, app.Name, destDir)
+			gitCmd := exec.CommandContext(
+				cmd.Context(),
+				"git", "clone",
+				"--branch", branchName,
+				"--single-branch",
+				app.RepositoryURL,
+				destDir,
 			)
-
-			for _, p := range projects {
-				wg.Add(1)
-				go func(proj platform.Project) {
-					defer wg.Done()
-					semaphore <- struct{}{}
-					defer func() { <-semaphore }()
-
-					info, err := platform.GetRepositoryInfo(ctx, pat, proj.ProjectID)
-					if err != nil {
-						cmd.Printf("Warning: could not fetch repository info for %q: %v\n", proj.Name, err)
-						return
-					}
-					if info.Type != "git" {
-						return
-					}
-
-					mu.Lock()
-					apps = append(apps, config.App{Name: proj.Name, RepositoryURL: info.URL})
-					mu.Unlock()
-				}(p)
-			}
-			wg.Wait()
-
-			if err := cfg.SetApps(apps); err != nil {
-				return fmt.Errorf("failed to save apps: %w", err)
+			gitCmd.Stdout = cmd.OutOrStdout()
+			gitCmd.Stderr = cmd.ErrOrStderr()
+			if err := gitCmd.Run(); err != nil {
+				return fmt.Errorf("git clone failed: %w", err)
 			}
 
-			cmd.Printf("Synced %d Git app(s).\n", len(apps))
+			fetchNotesCmd := exec.CommandContext(
+				cmd.Context(),
+				"git", "-C", destDir,
+				"fetch", "origin", "refs/notes/mx_metadata:refs/notes/mx_metadata",
+			)
+			fetchNotesCmd.Stdout = cmd.OutOrStdout()
+			fetchNotesCmd.Stderr = cmd.ErrOrStderr()
+			if err := fetchNotesCmd.Run(); err != nil {
+				cmd.Printf("Warning: could not fetch Mendix metadata notes: %v\n", err)
+			}
+
+			cmd.Printf("Done. Branch available at: %s\n", destDir)
 			return nil
 		},
 	}
@@ -449,6 +512,14 @@ Run 'mx config' to set the User ID, or re-run the CLI setup to configure both.`,
 	rootCmd.AddCommand(pathCmd)
 	rootCmd.AddCommand(convertCmd)
 	rootCmd.AddCommand(syncCmd)
+
+	checkoutCmd.Flags().StringVarP(&branchRepository, "repository", "r", "", "Search query to identify the app repository")
+	checkoutCmd.Flags().StringVarP(&branchName, "branch", "b", "", "Branch name to clone")
+	_ = checkoutCmd.MarkFlagRequired("repository")
+	_ = checkoutCmd.MarkFlagRequired("branch")
+
+	branchCmd.AddCommand(checkoutCmd)
+	rootCmd.AddCommand(branchCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
