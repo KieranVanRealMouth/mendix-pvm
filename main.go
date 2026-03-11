@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"mendix-pvm/branch"
 	"mendix-pvm/config"
 	"mendix-pvm/convert"
 	"mendix-pvm/platform"
@@ -10,7 +11,6 @@ import (
 	"mendix-pvm/ui"
 	"mendix-pvm/version"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -42,6 +42,7 @@ func main() {
 		pathVersionOnly  bool
 		branchRepository string
 		branchName       string
+		branchBase       string
 	)
 
 	var rootCmd = &cobra.Command{
@@ -386,9 +387,11 @@ Run 'mx config' to set the User ID, or re-run the CLI setup to configure both.`,
 		Long: `Commands for working with Mendix application branches.
 
 Commands:
+    create      Create (or reuse) a branch in a Mendix app repository
     checkout    Clone a branch from a Mendix app repository
 
 Examples:
+    mx branch create -r "Approval Tool" -b feat/my-feature --base main
     mx branch checkout -r "Approval Tool" -b feat/my-feature
 `,
 	}
@@ -470,33 +473,69 @@ Troubleshooting:
 
 			// 5. Clone
 			cmd.Printf("Cloning branch %q of %q into:\n  %s\n", branchName, app.Name, destDir)
-			gitCmd := exec.CommandContext(
-				cmd.Context(),
-				"git", "clone",
-				"--branch", branchName,
-				"--single-branch",
-				app.RepositoryURL,
-				destDir,
-			)
-			gitCmd.Stdout = cmd.OutOrStdout()
-			gitCmd.Stderr = cmd.ErrOrStderr()
-			if err := gitCmd.Run(); err != nil {
-				return fmt.Errorf("git clone failed: %w", err)
-			}
-
-			fetchNotesCmd := exec.CommandContext(
-				cmd.Context(),
-				"git", "-C", destDir,
-				"fetch", "origin", "refs/notes/mx_metadata:refs/notes/mx_metadata",
-			)
-			fetchNotesCmd.Stdout = cmd.OutOrStdout()
-			fetchNotesCmd.Stderr = cmd.ErrOrStderr()
-			if err := fetchNotesCmd.Run(); err != nil {
-				cmd.Printf("Warning: could not fetch Mendix metadata notes: %v\n", err)
+			if err := branch.Checkout(cmd.Context(), app, branchName, destDir, cmd.OutOrStdout(), cmd.ErrOrStderr()); err != nil {
+				return err
 			}
 
 			cmd.Printf("Done. Branch available at: %s\n", destDir)
 			return nil
+		},
+	}
+
+	var createCmd = &cobra.Command{
+		Use:   "create",
+		Short: "Create (or reuse) a branch in a Mendix app repository",
+		Long: `Create a new branch in a Mendix app's remote Git repository from a base
+branch, or clone it if it already exists on the remote.
+
+The repository flag accepts a search query; the app name must contain the
+provided string. If no matching app is found in the local config, a sync is
+performed automatically before retrying.
+
+Branch directories are created as:
+    <App Name>-<branch_name>   (forward slashes in branch names become underscores)
+
+Required:
+    --repository, -r   Search query to identify the app
+    --branch, -b       Branch name to create or reuse
+    --base             Base branch to branch off of when creating a new branch
+
+Examples:
+    mx branch create -r "Approval Tool" -b feat/my-feature --base main
+    mx branch create --repository "Order" --branch feat/new --base develop
+`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			pat := os.Getenv("MX_PAT")
+
+			// 1. Search current config
+			matches := search.SearchApps(cfg.Apps, branchRepository)
+
+			// 2. If no match, sync and retry
+			if len(matches) == 0 {
+				if cfg.UserID == "" || pat == "" {
+					return fmt.Errorf("repository %q not found in config and Mendix credentials are not set; cannot sync", branchRepository)
+				}
+				cmd.Printf("Repository %q not found in config. Syncing...\n", branchRepository)
+				if err := platform.Sync(cmd.Context(), cfg, pat, func(s string) { cmd.Println(s) }); err != nil {
+					return fmt.Errorf("sync failed: %w", err)
+				}
+				matches = search.SearchApps(cfg.Apps, branchRepository)
+			}
+
+			// 3. Exit conditions
+			if len(matches) == 0 {
+				return fmt.Errorf("no repository found matching %q", branchRepository)
+			}
+			if len(matches) > 1 {
+				var names []string
+				for _, m := range matches {
+					names = append(names, m.Name)
+				}
+				return fmt.Errorf("multiple repositories match %q: %s\nRefine your --repository query", branchRepository, strings.Join(names, ", "))
+			}
+
+			app := matches[0]
+			return branch.Create(cmd.Context(), cfg, app, branchName, branchBase, cmd.OutOrStdout(), cmd.ErrOrStderr())
 		},
 	}
 
@@ -535,7 +574,15 @@ Troubleshooting:
 	_ = checkoutCmd.MarkFlagRequired("repository")
 	_ = checkoutCmd.MarkFlagRequired("branch")
 
+	createCmd.Flags().StringVarP(&branchRepository, "repository", "r", "", "Search query to identify the app repository")
+	createCmd.Flags().StringVarP(&branchName, "branch", "b", "", "Branch name to create or reuse")
+	createCmd.Flags().StringVar(&branchBase, "base", "", "Base branch to branch off of when creating a new branch")
+	_ = createCmd.MarkFlagRequired("repository")
+	_ = createCmd.MarkFlagRequired("branch")
+	_ = createCmd.MarkFlagRequired("base")
+
 	branchCmd.AddCommand(checkoutCmd)
+	branchCmd.AddCommand(createCmd)
 	rootCmd.AddCommand(branchCmd)
 
 	if err := rootCmd.Execute(); err != nil {

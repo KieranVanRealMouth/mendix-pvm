@@ -197,6 +197,36 @@ mx convert -p CustomerPortal -v 10.6
 mx convert -p App -v 10.10 -a
 ```
 
+### `mx branch create`
+
+Create a new branch in a Mendix app's remote Git repository from a base branch, or clone it if it already exists on the remote.
+
+Flags:
+
+- `--repository`, `-r` (required): search query to identify the app
+- `--branch`, `-b` (required): branch name to create or reuse
+- `--base` (required): base branch to branch from when the branch does not yet exist on the remote
+
+Behavior:
+
+- If the destination directory (`<ProjectDirectory>\<App Name>-<branch_name>`) already exists, the command exits with an error — no git operations are performed.
+- If the branch already exists on the remote, it is cloned (equivalent to `mx branch checkout`).
+- If the branch does not exist on the remote, it is created from `--base` and then checked out locally:
+  1. Initialises a local repository in the destination directory.
+  2. Fetches the full history of `--base` from the remote.
+  3. Pushes `FETCH_HEAD` to create the new branch on the remote.
+  4. Fetches the new branch from the remote.
+  5. Creates a local tracking branch via `git checkout -b`.
+- Mendix metadata notes (`refs/notes/mx_metadata`) are fetched after checkout. A warning is printed if this step fails.
+- If no match is found and Mendix credentials (`MX_PAT` / `UserID`) are configured, a sync is performed automatically before retrying.
+
+Examples:
+
+```powershell
+mx branch create -r "Approval Tool" -b feat/my-feature --base main
+mx branch create --repository "Order" --branch feat/new --base develop
+```
+
 ### `mx branch checkout`
 
 Clone a single branch from a Mendix app's remote Git repository into a new directory inside your configured projects directory.
