@@ -3,6 +3,7 @@ package search
 import (
 	"errors"
 	"fmt"
+	"mendix-pvm/config"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,4 +74,22 @@ func matchAllTokens(normName string, tokens []string) bool {
 		}
 	}
 	return true
+}
+
+// SearchApps returns every app whose name matches all tokens derived from query.
+func SearchApps(apps []config.App, query string) []config.App {
+	tokens := []string{}
+	for _, q := range strings.Fields(query) {
+		if n := normalize(q); n != "" {
+			tokens = append(tokens, n)
+		}
+	}
+
+	var matches []config.App
+	for _, app := range apps {
+		if matchAllTokens(normalize(app.Name), tokens) {
+			matches = append(matches, app)
+		}
+	}
+	return matches
 }
