@@ -413,6 +413,23 @@ Required:
 Examples:
     mx branch checkout -r "Approval Tool" -b feat/my-feature
     mx branch checkout --repository "Order" --branch main
+
+Prerequisites (Studio Pro version control setup):
+  Before using this command you must enable private version control in
+  Mendix Studio Pro:
+    1. Open Edit > Preferences > Version Control > Git.
+    2. Enable "Enable private version control with Git".
+    3. Enter a Name and Email for your Git identity.
+    4. Enable "Use Windows credentials" so that the PAT token used during
+       the initial clone is reused automatically for subsequent operations.
+
+Troubleshooting:
+  If you get an "access denied" or authentication error, automated PAT
+  token detection may have failed. To recover:
+    1. In Studio Pro, sign out (Edit > Sign Out).
+    2. Re-run this command.
+    3. Git will prompt for your username and password — enter your Mendix
+       account username and a valid PAT token as the password.
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			pat := os.Getenv("MX_PAT")

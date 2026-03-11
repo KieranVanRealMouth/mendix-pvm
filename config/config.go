@@ -23,7 +23,7 @@ type App struct {
 type Config struct {
 	VersionDirectory string `json:"versionDirectory"`
 	ProjectDirectory string `json:"projectDirectory"`
-	UserID           string `json:"userId"`
+	UserID           string `json:"userID"`
 	Apps             []App  `json:"apps"`
 }
 
@@ -52,15 +52,9 @@ func create() (Config, error) {
 		ProjectDirectory: projectDir,
 	}
 
-	fmt.Println(`To use Mendix Platform features (mx sync), you need your Mendix User ID and a Personal Access Token (PAT).
-
-Your User ID (OpenID) can be found in the Mendix Portal:
-  1. Click your profile picture (top right)
-  2. Go to User Settings
-  3. Open the Personal Data tab
-  4. Copy the value in the OpenID row
-
+	fmt.Println(`To use Mendix Platform features (mx sync), you need a Personal Access Token (PAT).
 The PAT must include the following permissions:
+  - mx:mxid3:user-identifiers:uuid:read
   - mx:app:metadata:read
   - mx:modelrepository:repo:read
   - mx:modelrepository:repo:write
@@ -70,7 +64,7 @@ The PAT will be stored as the MX_PAT environment variable — it will NOT be wri
 Press Enter to skip this step. These values can be set later by re-running the CLI or editing the config.`)
 
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("User ID (OpenID): ")
+	fmt.Print("User ID: ")
 	userID, _ := reader.ReadString('\n')
 	cfg.UserID = strings.TrimSpace(userID)
 

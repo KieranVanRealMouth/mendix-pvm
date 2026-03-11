@@ -36,11 +36,15 @@ type Project struct {
 	Name      string `json:"name"`
 }
 
+type pageInfo struct {
+	Offset        int `json:"offset"`
+	Elements      int `json:"elements"`
+	TotalElements int `json:"totalElements"`
+}
+
 type projectsPage struct {
-	Items         []Project `json:"items"`
-	Offset        int       `json:"offset"`
-	Elements      int       `json:"elements"`
-	TotalElements int       `json:"totalElements"`
+	Page  pageInfo  `json:"page"`
+	Items []Project `json:"items"`
 }
 
 func GetUserProjects(ctx context.Context, pat, userID string) ([]Project, error) {
@@ -65,10 +69,10 @@ func GetUserProjects(ctx context.Context, pat, userID string) ([]Project, error)
 		resp.Body.Close()
 
 		all = append(all, page.Items...)
-		if page.Offset+page.Elements >= page.TotalElements {
+		offset += len(page.Items)
+		if offset >= page.Page.TotalElements {
 			break
 		}
-		offset = page.Offset + page.Elements
 	}
 	return all, nil
 }
