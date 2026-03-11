@@ -2,12 +2,16 @@ package main
 
 import (
 	"fmt"
+	"mendix-pvm/branch"
 	"mendix-pvm/config"
 	"mendix-pvm/convert"
+	"mendix-pvm/platform"
 	"mendix-pvm/project"
+	"mendix-pvm/search"
 	"mendix-pvm/ui"
 	"mendix-pvm/version"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -27,15 +31,18 @@ func main() {
 
 	// initialize flags
 	var (
-		convertVersion  string
-		convertProject  string
-		handleAll       bool
-		listProjectOnly bool
-		listVersionOnly bool
-		openProjectOnly bool
-		openVersionOnly bool
-		pathProjectOnly bool
-		pathVersionOnly bool
+		convertVersion   string
+		convertProject   string
+		handleAll        bool
+		listProjectOnly  bool
+		listVersionOnly  bool
+		openProjectOnly  bool
+		openVersionOnly  bool
+		pathProjectOnly  bool
+		pathVersionOnly  bool
+		branchRepository string
+		branchName       string
+		branchBase       string
 	)
 
 	var rootCmd = &cobra.Command{
@@ -48,6 +55,7 @@ Commands:
 	open      Open a project or Studio Pro version
 	path      Print directory path of a project/version
 	convert   Convert projects to another Studio Pro version
+	sync      Sync apps from the Mendix Platform
 	config    Edit configuration file
 
 Options:
@@ -59,6 +67,7 @@ Examples:
 	mx open 10.6
 	mx path MyApp --project
 	mx convert -p MyApp -v 10.10
+	mx sync
 	mx config
 	mx [command] --help (for details)
 `,
@@ -347,6 +356,189 @@ Notes:
 		},
 	}
 
+	var syncCmd = &cobra.Command{
+		Use:   "sync",
+		Short: "Sync apps from the Mendix Platform",
+		Long: `Fetch all accessible Mendix apps from the Mendix Platform and
+store their names and Git repository URLs in the local config.
+
+Requires your Mendix User ID (OpenID) in the config and the MX_PAT environment
+variable to be set.
+
+Your User ID can be found in the Mendix Portal:
+  1. Click your profile picture (top right)
+  2. Go to User Settings
+  3. Open the Personal Data tab
+  4. Copy the value in the OpenID row
+
+Run 'mx config' to set the User ID, or re-run the CLI setup to configure both.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			pat := os.Getenv("MX_PAT")
+			if cfg.UserID == "" || pat == "" {
+				return fmt.Errorf("Mendix credentials are not configured. Ensure your User ID is set in the config ('mx config') and MX_PAT is set as an environment variable.")
+			}
+			return platform.Sync(cmd.Context(), cfg, pat, func(s string) { cmd.Println(s) })
+		},
+	}
+
+	var branchCmd = &cobra.Command{
+		Use:   "branch",
+		Short: "Manage Mendix app branches",
+		Long: `Commands for working with Mendix application branches.
+
+Commands:
+    create      Create (or reuse) a branch in a Mendix app repository
+    checkout    Clone a branch from a Mendix app repository
+
+Examples:
+    mx branch create -r "Approval Tool" -b feat/my-feature --base main
+    mx branch checkout -r "Approval Tool" -b feat/my-feature
+`,
+	}
+
+	var checkoutCmd = &cobra.Command{
+		Use:   "checkout",
+		Short: "Clone a branch from a Mendix app's remote repository",
+		Long: `Clone a single branch from a Mendix app's remote Git repository
+into a new directory inside your configured projects directory.
+
+The repository flag accepts a search query; the app name must contain the
+provided string. If no matching app is found in the local config, a sync is
+performed automatically before retrying.
+
+Branch directories are created as:
+    <App Name>-<branch_name>   (forward slashes in branch names become underscores)
+
+Required:
+    --repository, -r   Search query to identify the app
+    --branch, -b       Branch name to clone
+
+Examples:
+    mx branch checkout -r "Approval Tool" -b feat/my-feature
+    mx branch checkout --repository "Order" --branch main
+
+Prerequisites (Studio Pro version control setup):
+  Before using this command you must enable private version control in
+  Mendix Studio Pro:
+    1. Open Edit > Preferences > Version Control > Git.
+    2. Enable "Enable private version control with Git".
+    3. Enter a Name and Email for your Git identity.
+    4. Enable "Use Windows credentials" so that the PAT token used during
+       the initial clone is reused automatically for subsequent operations.
+
+Troubleshooting:
+  If you get an "access denied" or authentication error, automated PAT
+  token detection may have failed. To recover:
+    1. In Studio Pro, sign out (Edit > Sign Out).
+    2. Re-run this command.
+    3. Git will prompt for your username and password — enter your Mendix
+       account username and a valid PAT token as the password.
+`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			pat := os.Getenv("MX_PAT")
+
+			// 1. Search current config
+			matches := search.SearchApps(cfg.Apps, branchRepository)
+
+			// 2. If no match, sync and retry
+			if len(matches) == 0 {
+				if cfg.UserID == "" || pat == "" {
+					return fmt.Errorf("repository %q not found in config and Mendix credentials are not set; cannot sync", branchRepository)
+				}
+				cmd.Printf("Repository %q not found in config. Syncing...\n", branchRepository)
+				if err := platform.Sync(cmd.Context(), cfg, pat, func(s string) { cmd.Println(s) }); err != nil {
+					return fmt.Errorf("sync failed: %w", err)
+				}
+				matches = search.SearchApps(cfg.Apps, branchRepository)
+			}
+
+			// 3. Exit conditions
+			if len(matches) == 0 {
+				return fmt.Errorf("no repository found matching %q", branchRepository)
+			}
+			if len(matches) > 1 {
+				var names []string
+				for _, m := range matches {
+					names = append(names, m.Name)
+				}
+				return fmt.Errorf("multiple repositories match %q: %s\nRefine your --repository query", branchRepository, strings.Join(names, ", "))
+			}
+
+			app := matches[0]
+
+			// 4. Build destination directory path
+			safeBranch := strings.ReplaceAll(branchName, "/", "_")
+			dirName := app.Name + "-" + safeBranch
+			destDir := filepath.Join(cfg.ProjectDirectory, dirName)
+
+			// 5. Clone
+			cmd.Printf("Cloning branch %q of %q into:\n  %s\n", branchName, app.Name, destDir)
+			if err := branch.Checkout(cmd.Context(), app, branchName, destDir, cmd.OutOrStdout(), cmd.ErrOrStderr()); err != nil {
+				return err
+			}
+
+			cmd.Printf("Done. Branch available at: %s\n", destDir)
+			return nil
+		},
+	}
+
+	var createCmd = &cobra.Command{
+		Use:   "create",
+		Short: "Create (or reuse) a branch in a Mendix app repository",
+		Long: `Create a new branch in a Mendix app's remote Git repository from a base
+branch, or clone it if it already exists on the remote.
+
+The repository flag accepts a search query; the app name must contain the
+provided string. If no matching app is found in the local config, a sync is
+performed automatically before retrying.
+
+Branch directories are created as:
+    <App Name>-<branch_name>   (forward slashes in branch names become underscores)
+
+Required:
+    --repository, -r   Search query to identify the app
+    --branch, -b       Branch name to create or reuse
+    --base             Base branch to branch off of when creating a new branch
+
+Examples:
+    mx branch create -r "Approval Tool" -b feat/my-feature --base main
+    mx branch create --repository "Order" --branch feat/new --base develop
+`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			pat := os.Getenv("MX_PAT")
+
+			// 1. Search current config
+			matches := search.SearchApps(cfg.Apps, branchRepository)
+
+			// 2. If no match, sync and retry
+			if len(matches) == 0 {
+				if cfg.UserID == "" || pat == "" {
+					return fmt.Errorf("repository %q not found in config and Mendix credentials are not set; cannot sync", branchRepository)
+				}
+				cmd.Printf("Repository %q not found in config. Syncing...\n", branchRepository)
+				if err := platform.Sync(cmd.Context(), cfg, pat, func(s string) { cmd.Println(s) }); err != nil {
+					return fmt.Errorf("sync failed: %w", err)
+				}
+				matches = search.SearchApps(cfg.Apps, branchRepository)
+			}
+
+			// 3. Exit conditions
+			if len(matches) == 0 {
+				return fmt.Errorf("no repository found matching %q", branchRepository)
+			}
+			if len(matches) > 1 {
+				var names []string
+				for _, m := range matches {
+					names = append(names, m.Name)
+				}
+				return fmt.Errorf("multiple repositories match %q: %s\nRefine your --repository query", branchRepository, strings.Join(names, ", "))
+			}
+
+			app := matches[0]
+			return branch.Create(cmd.Context(), cfg, app, branchName, branchBase, cmd.OutOrStdout(), cmd.ErrOrStderr())
+		},
+	}
+
 	// COMMAND CALLS
 	listCmd.Flags().BoolVarP(&listProjectOnly, "project", "p", false, "Show projects only")
 	listCmd.Flags().BoolVarP(&listVersionOnly, "version", "v", false, "Show Studio Pro versions only")
@@ -375,6 +567,23 @@ Notes:
 	rootCmd.AddCommand(openCmd)
 	rootCmd.AddCommand(pathCmd)
 	rootCmd.AddCommand(convertCmd)
+	rootCmd.AddCommand(syncCmd)
+
+	checkoutCmd.Flags().StringVarP(&branchRepository, "repository", "r", "", "Search query to identify the app repository")
+	checkoutCmd.Flags().StringVarP(&branchName, "branch", "b", "", "Branch name to clone")
+	_ = checkoutCmd.MarkFlagRequired("repository")
+	_ = checkoutCmd.MarkFlagRequired("branch")
+
+	createCmd.Flags().StringVarP(&branchRepository, "repository", "r", "", "Search query to identify the app repository")
+	createCmd.Flags().StringVarP(&branchName, "branch", "b", "", "Branch name to create or reuse")
+	createCmd.Flags().StringVar(&branchBase, "base", "", "Base branch to branch off of when creating a new branch")
+	_ = createCmd.MarkFlagRequired("repository")
+	_ = createCmd.MarkFlagRequired("branch")
+	_ = createCmd.MarkFlagRequired("base")
+
+	branchCmd.AddCommand(checkoutCmd)
+	branchCmd.AddCommand(createCmd)
+	rootCmd.AddCommand(branchCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)

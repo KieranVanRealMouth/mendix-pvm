@@ -197,6 +197,78 @@ mx convert -p CustomerPortal -v 10.6
 mx convert -p App -v 10.10 -a
 ```
 
+### `mx branch create`
+
+Create a new branch in a Mendix app's remote Git repository from a base branch, or clone it if it already exists on the remote.
+
+Flags:
+
+- `--repository`, `-r` (required): search query to identify the app
+- `--branch`, `-b` (required): branch name to create or reuse
+- `--base` (required): base branch to branch from when the branch does not yet exist on the remote
+
+Behavior:
+
+- If the destination directory (`<ProjectDirectory>\<App Name>-<branch_name>`) already exists, the command exits with an error — no git operations are performed.
+- If the branch already exists on the remote, it is cloned (equivalent to `mx branch checkout`).
+- If the branch does not exist on the remote, it is created from `--base` and then checked out locally:
+  1. Initialises a local repository in the destination directory.
+  2. Fetches the full history of `--base` from the remote.
+  3. Pushes `FETCH_HEAD` to create the new branch on the remote.
+  4. Fetches the new branch from the remote.
+  5. Creates a local tracking branch via `git checkout -b`.
+- Mendix metadata notes (`refs/notes/mx_metadata`) are fetched after checkout. A warning is printed if this step fails.
+- If no match is found and Mendix credentials (`MX_PAT` / `UserID`) are configured, a sync is performed automatically before retrying.
+
+Examples:
+
+```powershell
+mx branch create -r "Approval Tool" -b feat/my-feature --base main
+mx branch create --repository "Order" --branch feat/new --base develop
+```
+
+### `mx branch checkout`
+
+Clone a single branch from a Mendix app's remote Git repository into a new directory inside your configured projects directory.
+
+Flags:
+
+- `--repository`, `-r` (required): search query to identify the app
+- `--branch`, `-b` (required): branch name to clone
+
+Behavior:
+
+- Searches the local config for an app whose name contains the repository query.
+- If no match is found and Mendix credentials (`MX_PAT` / `UserID`) are configured, a sync is performed automatically before retrying.
+- The branch is cloned with `--single-branch` into `<ProjectDirectory>\<App Name>-<branch_name>` (forward slashes in branch names become underscores).
+- Mendix metadata notes (`refs/notes/mx_metadata`) are fetched after the clone. A warning is printed if this step fails — the checkout itself is still considered successful.
+
+Examples:
+
+```powershell
+mx branch checkout -r "Approval Tool" -b feat/my-feature
+mx branch checkout --repository "Order" --branch main
+```
+
+#### Prerequisites — Studio Pro version control setup
+
+Before using `mx branch checkout`, you must configure private version control in Mendix Studio Pro:
+
+1. Open **Edit > Preferences > Version Control > Git**.
+2. Enable **Enable private version control with Git**.
+3. Enter a **Name** and **Email** for your Git identity.
+4. Enable **Use Windows credentials** (this allows the PAT token that was used during the initial clone to be picked up automatically for subsequent Git operations).
+
+#### Troubleshooting
+
+- **"You do not have access" / authentication error**
+
+  Automated PAT token detection may fail in some environments. To resolve this:
+
+  1. In Studio Pro, sign out of your Mendix account (**Edit > Sign Out**).
+  2. Re-run the `mx branch checkout` command.
+  3. Git will prompt you for your username and password — enter your Mendix account username and a valid PAT token as the password.
+
 ### `mx config`
 
 Open the configuration file in your default editor.

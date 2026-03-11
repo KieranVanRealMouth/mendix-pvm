@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -8,13 +9,22 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"golang.org/x/term"
 )
 
 const configFileName = ".mendix-pvm.json"
 
+type App struct {
+	Name          string `json:"name"`
+	RepositoryURL string `json:"repositoryUrl"`
+}
+
 type Config struct {
-	VersionDirectory string
-	ProjectDirectory string
+	VersionDirectory string `json:"versionDirectory"`
+	ProjectDirectory string `json:"projectDirectory"`
+	UserID           string `json:"userID"`
+	Apps             []App  `json:"apps"`
 }
 
 func create() (Config, error) {
@@ -37,10 +47,56 @@ func create() (Config, error) {
 	}
 	projectDir := filepath.Join(home, "Mendix")
 
-	return Config{
+	cfg := Config{
 		VersionDirectory: versionDir,
 		ProjectDirectory: projectDir,
-	}, nil
+	}
+
+	fmt.Println(`To use Mendix Platform features (mx sync), you need a Personal Access Token (PAT).
+The PAT must include the following permissions:
+  - mx:mxid3:user-identifiers:uuid:read
+  - mx:app:metadata:read
+  - mx:modelrepository:repo:read
+  - mx:modelrepository:repo:write
+  - mx:modelrepository:write
+
+The PAT will be stored as the MX_PAT environment variable — it will NOT be written to the config file.
+Press Enter to skip this step. These values can be set later by re-running the CLI or editing the config.`)
+
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("User ID: ")
+	userID, _ := reader.ReadString('\n')
+	cfg.UserID = strings.TrimSpace(userID)
+
+	fmt.Print("Personal Access Token (PAT): ")
+	patBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+	fmt.Println()
+	if err != nil {
+		fmt.Printf("Warning: could not read PAT securely: %v\n", err)
+	} else {
+		pat := strings.TrimSpace(string(patBytes))
+		if pat != "" {
+			if err := persistPAT(pat); err != nil {
+				fmt.Printf("Warning: could not persist MX_PAT: %v\n", err)
+			}
+		}
+	}
+
+	return cfg, nil
+}
+
+func persistPAT(pat string) error {
+	switch runtime.GOOS {
+	case "windows":
+		if err := exec.Command("setx", "MX_PAT", pat).Run(); err != nil {
+			return fmt.Errorf("setx failed: %w", err)
+		}
+		fmt.Println("MX_PAT has been set as a user environment variable.")
+		fmt.Println("You must open a new terminal for it to take effect.")
+	default:
+		fmt.Printf("\nTo persist MX_PAT, add the following to your ~/.bashrc or ~/.zshrc:\n  export MX_PAT=%s\n", pat)
+	}
+	return nil
 }
 
 func (config *Config) save() error {
@@ -95,6 +151,11 @@ func validate(config Config) error {
 	}
 
 	return nil
+}
+
+func (c *Config) SetApps(apps []App) error {
+	c.Apps = apps
+	return c.save()
 }
 
 func getConfigPath() (string, error) {
