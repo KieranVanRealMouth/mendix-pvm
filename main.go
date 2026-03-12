@@ -43,6 +43,7 @@ func main() {
 		branchRepository string
 		branchName       string
 		branchBase       string
+		branchOpen       bool
 	)
 
 	var rootCmd = &cobra.Command{
@@ -478,6 +479,10 @@ Troubleshooting:
 			}
 
 			cmd.Printf("Done. Branch available at: %s\n", destDir)
+
+			if branchOpen {
+				return OpenProjectOrVersion(destDir, cmd)
+			}
 			return nil
 		},
 	}
@@ -535,7 +540,17 @@ Examples:
 			}
 
 			app := matches[0]
-			return branch.Create(cmd.Context(), cfg, app, branchName, branchBase, cmd.OutOrStdout(), cmd.ErrOrStderr())
+			if err := branch.Create(cmd.Context(), cfg, app, branchName, branchBase, cmd.OutOrStdout(), cmd.ErrOrStderr()); err != nil {
+				return err
+			}
+
+			if branchOpen {
+				safeBranch := strings.ReplaceAll(branchName, "/", "_")
+				dirName := app.Name + "-" + safeBranch
+				destDir := filepath.Join(cfg.ProjectDirectory, dirName)
+				return OpenProjectOrVersion(destDir, cmd)
+			}
+			return nil
 		},
 	}
 
@@ -571,12 +586,14 @@ Examples:
 
 	checkoutCmd.Flags().StringVarP(&branchRepository, "repository", "r", "", "Search query to identify the app repository")
 	checkoutCmd.Flags().StringVarP(&branchName, "branch", "b", "", "Branch name to clone")
+	checkoutCmd.Flags().BoolVar(&branchOpen, "open", false, "Open the branch in Studio Pro after checkout")
 	_ = checkoutCmd.MarkFlagRequired("repository")
 	_ = checkoutCmd.MarkFlagRequired("branch")
 
 	createCmd.Flags().StringVarP(&branchRepository, "repository", "r", "", "Search query to identify the app repository")
 	createCmd.Flags().StringVarP(&branchName, "branch", "b", "", "Branch name to create or reuse")
 	createCmd.Flags().StringVar(&branchBase, "base", "", "Base branch to branch off of when creating a new branch")
+	createCmd.Flags().BoolVar(&branchOpen, "open", false, "Open the branch in Studio Pro after creation")
 	_ = createCmd.MarkFlagRequired("repository")
 	_ = createCmd.MarkFlagRequired("branch")
 	_ = createCmd.MarkFlagRequired("base")
