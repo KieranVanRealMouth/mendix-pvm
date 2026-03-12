@@ -19,7 +19,6 @@ func Checkout(ctx context.Context, app config.App, branchName, destDir string, s
 		ctx,
 		"git", "clone",
 		"--branch", branchName,
-		"--single-branch",
 		app.RepositoryURL,
 		destDir,
 	)
