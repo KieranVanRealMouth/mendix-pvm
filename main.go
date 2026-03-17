@@ -592,7 +592,7 @@ Examples:
 
 	createCmd.Flags().StringVarP(&branchRepository, "repository", "r", "", "Search query to identify the app repository")
 	createCmd.Flags().StringVarP(&branchName, "branch", "b", "", "Branch name to create or reuse")
-	createCmd.Flags().StringVar(&branchBase, "base", "", "Base branch to branch off of when creating a new branch")
+	createCmd.Flags().StringVar(&branchBase, "base", "ba", "Base branch to branch off of when creating a new branch")
 	createCmd.Flags().BoolVar(&branchOpen, "open", false, "Open the branch in Studio Pro after creation")
 	_ = createCmd.MarkFlagRequired("repository")
 	_ = createCmd.MarkFlagRequired("branch")
