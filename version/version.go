@@ -5,6 +5,7 @@ import (
 	"mendix-pvm/search"
 	"mendix-pvm/utils"
 	"path/filepath"
+	"os/exec"
 )
 
 func FindModelerSubdir(dir string) (string, error) {
@@ -49,9 +50,6 @@ func Open(versionPath string) error {
 
 	studiopro := filepath.Join(modelerPath, "studiopro.exe")
 
-	if err := utils.OpenFile(studiopro); err != nil {
-		return err
-	}
-
-	return nil
+	cmd := exec.Command(studiopro, "--enable-extension-development")
+	return cmd.Start()
 }
