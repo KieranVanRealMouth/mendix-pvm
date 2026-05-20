@@ -7,10 +7,14 @@ import (
 )
 
 // IsWSL reports whether the process is running inside Windows Subsystem for Linux.
-// /proc/version contains "microsoft" on WSL kernels.
+// Checks WSL_DISTRO_NAME env var first (always set by WSL), then falls back to
+// reading /proc/version for "microsoft".
 func IsWSL() bool {
 	if runtime.GOOS != "linux" {
 		return false
+	}
+	if os.Getenv("WSL_DISTRO_NAME") != "" {
+		return true
 	}
 	data, err := os.ReadFile("/proc/version")
 	if err != nil {
