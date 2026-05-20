@@ -5,6 +5,7 @@ import (
 	"mendix-pvm/project"
 	"mendix-pvm/search"
 	"mendix-pvm/version"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -60,7 +61,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		_ = project.Open(msg.destDir)
-		return m, tea.Quit
+		action := "Checked out"
+		if m.branchMode == branchModeCreate {
+			action = "Created"
+		}
+		m.statusMsg = action + " " + filepath.Base(msg.destDir)
+		m.errMsg = ""
+		m.screen = screenDualPanel
+		return m, nil
 
 	case tea.KeyMsg:
 		return m.handleKey(msg)
@@ -140,6 +148,7 @@ func (m model) updateDualPanel(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.branches, _ = project.Search(m.cfg.ProjectDirectory, strings.Fields(app.Name))
 			m.branchCursor = 0
 			m.errMsg = ""
+			m.statusMsg = ""
 			m.screen = screenBranchList
 		case "c":
 			if len(m.apps) == 0 {
@@ -165,8 +174,10 @@ func (m model) updateDualPanel(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if len(m.versions) == 0 {
 				return m, nil
 			}
-			_ = version.Open(m.versions[m.versionCursor])
-			return m, tea.Quit
+			vPath := m.versions[m.versionCursor]
+			_ = version.Open(vPath)
+			m.statusMsg = "Opened " + filepath.Base(vPath)
+			m.errMsg = ""
 		}
 	}
 
@@ -200,8 +211,10 @@ func (m model) updateSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.errMsg = ""
 			m.screen = screenBranchList
 		} else if m.activePanel == panelVersions && len(filteredVersions) > 0 {
-			_ = version.Open(filteredVersions[m.versionCursor])
-			return m, tea.Quit
+			vPath := filteredVersions[m.versionCursor]
+			_ = version.Open(vPath)
+			m.statusMsg = "Opened " + filepath.Base(vPath)
+			m.errMsg = ""
 		}
 		return m, nil
 
@@ -293,8 +306,10 @@ func (m model) updateBranchList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(m.branches) == 0 {
 			return m, nil
 		}
-		_ = project.Open(m.branches[m.branchCursor])
-		return m, tea.Quit
+		branchPath := m.branches[m.branchCursor]
+		_ = project.Open(branchPath)
+		m.statusMsg = "Opened " + filepath.Base(branchPath)
+		m.errMsg = ""
 	case "c":
 		m.branchActionCursor = 0
 		m.branchActionOrigin = screenBranchList
@@ -321,8 +336,10 @@ func (m model) updateBranchSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.searching = false
 		m.searchInput.Blur()
 		if len(filtered) > 0 {
-			_ = project.Open(filtered[m.branchCursor])
-			return m, tea.Quit
+			branchPath := filtered[m.branchCursor]
+			_ = project.Open(branchPath)
+			m.statusMsg = "Opened " + filepath.Base(branchPath)
+			m.errMsg = ""
 		}
 		return m, nil
 

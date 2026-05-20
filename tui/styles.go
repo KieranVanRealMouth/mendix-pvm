@@ -8,4 +8,5 @@ var (
 	selectedItemStyle   = lipgloss.NewStyle().Background(lipgloss.Color("240"))
 	footerStyle         = lipgloss.NewStyle().Faint(true)
 	errorStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+	successStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 )

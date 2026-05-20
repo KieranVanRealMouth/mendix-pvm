@@ -109,12 +109,17 @@ func (m model) viewDualPanel() string {
 		footer = footerStyle.Render("(j/k) navigate  (l/→) versions  (h/←) apps  (enter) branches  (c) create/checkout  (s) search  (o) config  (q) quit")
 	}
 
+	var statusLine string
+	if m.statusMsg != "" {
+		statusLine = "\n" + successStyle.Render(m.statusMsg)
+	}
+
 	var errLine string
 	if m.errMsg != "" {
 		errLine = "\n" + errorStyle.Render(m.errMsg)
 	}
 
-	return panels + searchBar + errLine + "\n" + footer
+	return panels + searchBar + statusLine + errLine + "\n" + footer
 }
 
 func (m model) viewBranchList() string {
@@ -155,7 +160,7 @@ func (m model) viewBranchList() string {
 	} else {
 		footer = footerStyle.Render("(j/k) navigate  (enter) open  (c) create/checkout  (s) search  (esc) back  (q) quit")
 	}
-	return renderScreen(title, m.width, body, m.errMsg, footer)
+	return renderScreen(title, m.width, body, m.statusMsg, m.errMsg, footer)
 }
 
 func (m model) viewBranchAction() string {
@@ -166,7 +171,7 @@ func (m model) viewBranchAction() string {
 		listH = 1
 	}
 	footer := footerStyle.Render("(j/k) navigate  (enter) select  (esc) back")
-	return renderScreen(title, m.width, renderItemList(items, m.branchActionCursor, listH, m.width-3), m.errMsg, footer)
+	return renderScreen(title, m.width, renderItemList(items, m.branchActionCursor, listH, m.width-3), "", m.errMsg, footer)
 }
 
 func (m model) viewRemoteBranchList() string {
@@ -193,24 +198,28 @@ func (m model) viewRemoteBranchList() string {
 		footerText = "(j/k) navigate  (enter) checkout  (esc) back  (q) quit"
 	}
 	footer := footerStyle.Render(footerText)
-	return renderScreen(title, m.width, renderItemList(items, m.remoteBranchCursor, listH, m.width-3), m.errMsg, footer)
+	return renderScreen(title, m.width, renderItemList(items, m.remoteBranchCursor, listH, m.width-3), "", m.errMsg, footer)
 }
 
 func (m model) viewBranchNameInput() string {
 	title := fmt.Sprintf("New branch from '%s' — %s", m.selectedBase, m.selectedApp.Name)
 	body := "\n  Branch name: " + m.nameInput.View() + "\n\n"
 	footer := footerStyle.Render("(enter) create  (esc) cancel")
-	return renderScreen(title, m.width, body, m.errMsg, footer)
+	return renderScreen(title, m.width, body, m.statusMsg, m.errMsg, footer)
 }
 
-// renderScreen renders a full-width screen with a title, separator, body, optional error, and footer.
-func renderScreen(title string, width int, body, errMsg, footer string) string {
+// renderScreen renders a full-width screen with a title, separator, body, optional status/error, and footer.
+func renderScreen(title string, width int, body, statusMsg, errMsg, footer string) string {
 	sep := strings.Repeat("─", width)
+	var statusLine string
+	if statusMsg != "" {
+		statusLine = successStyle.Render(statusMsg) + "\n"
+	}
 	var errLine string
 	if errMsg != "" {
 		errLine = errorStyle.Render(errMsg) + "\n"
 	}
-	return title + "\n" + sep + "\n" + body + errLine + footer
+	return title + "\n" + sep + "\n" + body + statusLine + errLine + footer
 }
 
 // renderItemList renders a scrollable list of items with the cursor highlighted.

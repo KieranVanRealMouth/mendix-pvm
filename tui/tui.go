@@ -102,8 +102,9 @@ type model struct {
 	spinner    spinner.Model
 	loadingMsg string
 
-	// Inline error
-	errMsg string
+	// Inline error / status
+	errMsg    string
+	statusMsg string
 
 	// Terminal size
 	width  int
