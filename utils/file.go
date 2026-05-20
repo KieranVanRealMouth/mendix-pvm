@@ -22,7 +22,7 @@ func OpenFile(path string) error {
 		cmd = exec.Command("xdg-open", path)
 	}
 
-	if err := cmd.Start(); err != nil {
+	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
 
