@@ -1,8 +1,3 @@
----
-tags:
-  - technical specification
----
-
 # Mendix PVM — Technical Specification
 
 A CLI tool for managing Mendix Studio Pro versions and projects. Built in Go with Cobra for command parsing.
@@ -53,14 +48,15 @@ type App struct {
 - `Load()` — Loads config from home directory; creates default config on first run
 - `create()` — Interactive setup wizard; guides users through initial configuration
 - `validate()` — Validates directories exist and are readable
-- `Open()` — Launches config file in platform-appropriate editor (cmd.exe, open, xdg-open)
+- `Open()` — Launches config file in platform-appropriate editor; delegates to `utils.OpenFile()`
 - `persistPAT()` — Stores MX_PAT environment variable using platform-specific methods
 - `SetApps()` — Updates and saves app list (used by sync)
 
 **Platform-Specific Defaults:**
 
 - Windows: versionDirectory = `%ProgramFiles%\Mendix`
-- macOS/Linux: versionDirectory = empty (user must set)
+- WSL: versionDirectory = `/mnt/c/Program Files/Mendix`
+- macOS/Linux: versionDirectory = empty (user must set via `mx config`)
 - All platforms: projectDirectory = `~/Mendix`
 
 **Design Decision:** Config stored in home directory rather than XDG_CONFIG_HOME for Windows compatibility. Future enhancement: full XDG support.
@@ -81,7 +77,7 @@ Handles discovery and launching of Studio Pro installations.
 
 - Version discovery is directory-based; searches top-level directories in versionDirectory
 - Only returns paths containing a valid modeler/ subdirectory
-- Launch method calls `studiopro.exe` from `<version>/modeler/studiopro.exe`
+- Launch method calls `studiopro.exe` from `<version>/modeler/studiopro.exe` on Windows and WSL; returns an error on unsupported platforms (macOS, Linux)
 
 ### `project` — Mendix Project Management
 
@@ -206,18 +202,21 @@ Delegates project conversion to Studio Pro's mx.exe tool.
 
 ### `utils` — Cross-Platform Utilities
 
-**File:** `utils/file.go`
+**Files:** `utils/file.go`, `utils/platform.go`
 
-Provides platform-specific file/application launching.
+Provides platform detection and platform-specific file/application launching.
 
-**Key Function:**
+**Key Functions:**
 
+- `Platform()` — Returns the effective platform string: `"windows"`, `"darwin"`, `"wsl"`, or `"linux"`. WSL is detected by reading `/proc/version` for `"microsoft"` before falling back to the generic Linux branch.
+- `IsWSL()` — Reports whether the process is running inside Windows Subsystem for Linux.
 - `OpenFile(path)` — Launches file with system default application
   - Windows: `cmd /c start "" <path>`
   - macOS: `open <path>`
+  - WSL: `wslview <path>` (requires `wslu`; returns a clear error if not installed)
   - Linux: `xdg-open <path>`
 
-Uses `runtime.GOOS` for platform detection; non-blocking (cmd.Start, not cmd.Run).
+Uses `utils.Platform()` for platform detection; non-blocking (cmd.Start, not cmd.Run).
 
 ### `ui` — Output Formatting
 
@@ -332,8 +331,8 @@ branch cloned and ready to open
 
 ## Future Enhancements
 
+- **TUI Interface:** Interactive terminal UI on base `mx` command (no arguments)
+- **Concurrent Conversions:** Parallel conversion support for multiple projects
 - **XDG_CONFIG_HOME Support:** Full XDG Base Directory specification for Linux/macOS
 - **Multiple Project Directories:** Config extension to support array of project paths
 - **Result Caching:** Cache search results with invalidation on filesystem changes
-- **TUI Interface:** Interactive terminal UI on base `mx` command (no arguments)
-- **Concurrent Conversions:** Parallel conversion support for multiple projects

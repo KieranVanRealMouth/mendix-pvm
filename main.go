@@ -26,7 +26,7 @@ import (
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
-		fmt.Printf("An error occured while trying to load the config\n%w", err)
+		fmt.Printf("An error occured while trying to load the config\n%v", err)
 	}
 
 	// initialize flags

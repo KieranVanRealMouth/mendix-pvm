@@ -3,27 +3,35 @@ package utils
 import (
 	"fmt"
 	"os/exec"
-	"runtime"
 )
 
 func OpenFile(path string) error {
 	var cmd *exec.Cmd
 
-	switch runtime.GOOS {
+	switch Platform() {
 	case "windows":
-		// 'start' needs to run inside cmd.exe and requires an empty title arg
 		cmd = exec.Command("cmd", "/c", "start", "", path)
-
 	case "darwin":
 		cmd = exec.Command("open", path)
-
-	default: // Linux, BSD, etc.
+	case "wsl":
+		if err := checkWslview(); err != nil {
+			return err
+		}
+		cmd = exec.Command("wslview", path)
+	default: // linux
 		cmd = exec.Command("xdg-open", path)
 	}
 
-	if err := cmd.Start(); err != nil {
+	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
 
+	return nil
+}
+
+func checkWslview() error {
+	if _, err := exec.LookPath("wslview"); err != nil {
+		return fmt.Errorf("wslview is not installed — install wslu with: sudo apt install wslu")
+	}
 	return nil
 }

@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"mendix-pvm/search"
 	"mendix-pvm/utils"
-	"path/filepath"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 )
 
 func FindModelerSubdir(dir string) (string, error) {
@@ -48,8 +49,13 @@ func Open(versionPath string) error {
 		return err
 	}
 
-	studiopro := filepath.Join(modelerPath, "studiopro.exe")
+	var exe string
+	switch utils.Platform() {
+	case "windows", "wsl":
+		exe = filepath.Join(modelerPath, "studiopro.exe")
+	default:
+		return fmt.Errorf("launching Studio Pro is not supported on this platform (%s)", runtime.GOOS)
+	}
 
-	cmd := exec.Command(studiopro, "--enable-extension-development")
-	return cmd.Start()
+	return exec.Command(exe, "--enable-extension-development").Start()
 }

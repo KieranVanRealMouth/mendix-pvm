@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"mendix-pvm/utils"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,25 +28,42 @@ type Config struct {
 	Apps             []App  `json:"apps"`
 }
 
+// wslWindowsHome converts the Windows USERPROFILE path (e.g. C:\Users\kegmond)
+// to its WSL mount equivalent (e.g. /mnt/c/Users/kegmond).
+func wslWindowsHome() string {
+	up := os.Getenv("USERPROFILE")
+	if up == "" || len(up) < 2 || up[1] != ':' {
+		return ""
+	}
+	drive := strings.ToLower(string(up[0]))
+	return "/mnt/" + drive + filepath.ToSlash(up[2:])
+}
+
 func create() (Config, error) {
-	var versionDir string
-	switch runtime.GOOS {
+	var versionDir, projectDir string
+
+	switch utils.Platform() {
 	case "windows":
-		programFiles := os.Getenv("ProgramFiles")
-		if programFiles != "" {
-			versionDir = filepath.Join(programFiles, "Mendix")
+		if pf := os.Getenv("ProgramFiles"); pf != "" {
+			versionDir = filepath.Join(pf, "Mendix")
 		}
-	case "darwin":
-		return Config{}, fmt.Errorf("macOS is not supported")
-	default:
-		versionDir = ""
+		if up := os.Getenv("USERPROFILE"); up != "" {
+			projectDir = filepath.Join(up, "Mendix")
+		}
+	case "wsl":
+		versionDir = "/mnt/c/Program Files/Mendix"
+		if winHome := wslWindowsHome(); winHome != "" {
+			projectDir = filepath.Join(winHome, "Mendix")
+		}
 	}
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return Config{}, fmt.Errorf("failed to determine user home directory: %w", err)
+	if projectDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return Config{}, fmt.Errorf("failed to determine user home directory: %w", err)
+		}
+		projectDir = filepath.Join(home, "Mendix")
 	}
-	projectDir := filepath.Join(home, "Mendix")
 
 	cfg := Config{
 		VersionDirectory: versionDir,
@@ -208,13 +226,5 @@ func Open(config *Config) error {
 	if err != nil {
 		return err
 	}
-
-	switch runtime.GOOS {
-	case "windows":
-		return exec.Command("cmd", "/c", "start", "", configPath).Start()
-	case "darwin":
-		return exec.Command("open", configPath).Start()
-	default:
-		return exec.Command("xdg-open", configPath).Start()
-	}
+	return utils.OpenFile(configPath)
 }
