@@ -97,6 +97,28 @@ func FilterPaths(paths []string, query string) []string {
 	return matches
 }
 
+// FilterStrings filters a list of plain strings by their full value,
+// using the same normalization and token matching as FilterPaths but without
+// stripping path separators. Use this for branch names that contain slashes.
+func FilterStrings(items []string, query string) []string {
+	var tokens []string
+	for _, q := range strings.Fields(query) {
+		if n := normalize(q); n != "" {
+			tokens = append(tokens, n)
+		}
+	}
+	if len(tokens) == 0 {
+		return items
+	}
+	var matches []string
+	for _, s := range items {
+		if matchAllTokens(normalize(s), tokens) {
+			matches = append(matches, s)
+		}
+	}
+	return matches
+}
+
 // SearchApps returns every app whose name matches all tokens derived from query.
 func SearchApps(apps []config.App, query string) []config.App {
 	tokens := []string{}

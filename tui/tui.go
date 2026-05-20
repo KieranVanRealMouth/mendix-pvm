@@ -91,12 +91,13 @@ type model struct {
 	// Branch name input
 	nameInput textinput.Model
 
-	// Inline search (s key in dual panel and branch list)
-	searching          bool
-	searchInput        textinput.Model
-	savedAppCursor     int
-	savedVersionCursor int
-	savedBranchCursor  int
+	// Inline search (s key in dual panel, branch list, and remote branch list)
+	searching                bool
+	searchInput              textinput.Model
+	savedAppCursor           int
+	savedVersionCursor       int
+	savedBranchCursor        int
+	savedRemoteBranchCursor  int
 
 	// Loading
 	spinner    spinner.Model

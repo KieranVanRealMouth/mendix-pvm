@@ -182,23 +182,44 @@ func (m model) viewRemoteBranchList() string {
 		title = "Select branch to checkout — " + m.selectedApp.Name
 	}
 
-	items := make([]string, len(m.remoteBranches))
-	for i, b := range m.remoteBranches {
-		items[i] = b.Name
+	reserved := 5
+	if m.searching {
+		reserved++
 	}
-	listH := m.height - 5
+	listH := m.height - reserved
 	if listH < 1 {
 		listH = 1
 	}
 
+	allNames := make([]string, len(m.remoteBranches))
+	for i, b := range m.remoteBranches {
+		allNames[i] = b.Name
+	}
+	displayNames := allNames
+	if m.searching && m.searchInput.Value() != "" {
+		displayNames = search.FilterStrings(allNames, m.searchInput.Value())
+	}
+
+	cursor := m.remoteBranchCursor
+	if cursor >= len(displayNames) {
+		cursor = max(0, len(displayNames)-1)
+	}
+
+	body := renderItemList(displayNames, cursor, listH, m.width-3)
+	if m.searching {
+		body += "  Search: " + m.searchInput.View() + "\n"
+	}
+
 	var footerText string
-	if m.branchMode == branchModeCreate {
-		footerText = "(j/k) navigate  (enter) use as base  (esc) back  (q) quit"
+	if m.searching {
+		footerText = "(↑/↓) navigate results  (enter) select  (esc) cancel search"
+	} else if m.branchMode == branchModeCreate {
+		footerText = "(j/k) navigate  (enter) use as base  (s) search  (esc) back  (q) quit"
 	} else {
-		footerText = "(j/k) navigate  (enter) checkout  (esc) back  (q) quit"
+		footerText = "(j/k) navigate  (enter) checkout  (s) search  (esc) back  (q) quit"
 	}
 	footer := footerStyle.Render(footerText)
-	return renderScreen(title, m.width, renderItemList(items, m.remoteBranchCursor, listH, m.width-3), "", m.errMsg, footer)
+	return renderScreen(title, m.width, body, "", m.errMsg, footer)
 }
 
 func (m model) viewBranchNameInput() string {

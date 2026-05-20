@@ -2,6 +2,7 @@ package tui
 
 import (
 	"mendix-pvm/config"
+	"mendix-pvm/platform"
 	"mendix-pvm/project"
 	"mendix-pvm/search"
 	"mendix-pvm/version"
@@ -410,12 +411,22 @@ func (m model) updateBranchAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) updateRemoteBranchList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.searching {
+		return m.updateRemoteBranchSearchMode(msg)
+	}
+
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "esc":
 		m.screen = screenBranchAction
 		m.errMsg = ""
+	case "s":
+		m.searching = true
+		m.savedRemoteBranchCursor = m.remoteBranchCursor
+		m.remoteBranchCursor = 0
+		m.searchInput.SetValue("")
+		m.searchInput.Focus()
 	case "j", "down":
 		if m.remoteBranchCursor < len(m.remoteBranches)-1 {
 			m.remoteBranchCursor++
@@ -428,20 +439,85 @@ func (m model) updateRemoteBranchList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(m.remoteBranches) == 0 {
 			return m, nil
 		}
-		selected := m.remoteBranches[m.remoteBranchCursor].Name
-		if m.branchMode == branchModeCheckout {
-			m.screen = screenLoading
-			m.loadingMsg = "Checking out '" + selected + "'..."
-			m.errMsg = ""
-			return m, checkoutBranchCmd(m.ctx, m.cfg, m.selectedApp, selected)
-		}
-		m.selectedBase = selected
-		m.screen = screenBranchNameInput
-		m.nameInput.SetValue("")
-		m.nameInput.Focus()
-		m.errMsg = ""
+		return m.selectRemoteBranch(m.remoteBranches[m.remoteBranchCursor].Name)
 	}
 	return m, nil
+}
+
+func (m model) updateRemoteBranchSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyCtrlC:
+		return m, tea.Quit
+
+	case tea.KeyEsc:
+		m.searching = false
+		m.remoteBranchCursor = m.savedRemoteBranchCursor
+		m.searchInput.Blur()
+		m.searchInput.SetValue("")
+		return m, nil
+
+	case tea.KeyEnter:
+		names := remoteBranchNames(m.remoteBranches)
+		filtered := search.FilterStrings(names, m.searchInput.Value())
+		m.searching = false
+		m.searchInput.Blur()
+		if len(filtered) > 0 && m.remoteBranchCursor < len(filtered) {
+			return m.selectRemoteBranch(filtered[m.remoteBranchCursor])
+		}
+		return m, nil
+
+	case tea.KeyUp:
+		if m.remoteBranchCursor > 0 {
+			m.remoteBranchCursor--
+		}
+		return m, nil
+
+	case tea.KeyDown:
+		names := remoteBranchNames(m.remoteBranches)
+		filtered := search.FilterStrings(names, m.searchInput.Value())
+		if m.remoteBranchCursor < len(filtered)-1 {
+			m.remoteBranchCursor++
+		}
+		return m, nil
+	}
+
+	oldQuery := m.searchInput.Value()
+	var cmd tea.Cmd
+	m.searchInput, cmd = m.searchInput.Update(msg)
+	newQuery := m.searchInput.Value()
+
+	if oldQuery != newQuery {
+		names := remoteBranchNames(m.remoteBranches)
+		filtered := search.FilterStrings(names, newQuery)
+		if m.remoteBranchCursor >= len(filtered) {
+			m.remoteBranchCursor = max(0, len(filtered)-1)
+		}
+	}
+
+	return m, cmd
+}
+
+func (m model) selectRemoteBranch(name string) (tea.Model, tea.Cmd) {
+	if m.branchMode == branchModeCheckout {
+		m.screen = screenLoading
+		m.loadingMsg = "Checking out '" + name + "'..."
+		m.errMsg = ""
+		return m, checkoutBranchCmd(m.ctx, m.cfg, m.selectedApp, name)
+	}
+	m.selectedBase = name
+	m.screen = screenBranchNameInput
+	m.nameInput.SetValue("")
+	m.nameInput.Focus()
+	m.errMsg = ""
+	return m, nil
+}
+
+func remoteBranchNames(branches []platform.Branch) []string {
+	names := make([]string, len(branches))
+	for i, b := range branches {
+		names[i] = b.Name
+	}
+	return names
 }
 
 func (m model) updateBranchNameInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

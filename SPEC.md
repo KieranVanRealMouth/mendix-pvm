@@ -109,9 +109,10 @@ Provides normalized search across projects and versions.
 
 - `SearchDir(searchPath, query)` — Searches filesystem for directories matching all query tokens
 - `SearchApps(apps, query)` — Searches app list (from config) by name
-- `FilterPaths(paths, query)` — Filters an already-loaded list of directory paths by base name; same normalization as `SearchDir` but without filesystem I/O (used by TUI live search)
-- `normalize(s)` — Converts strings to lowercase, removes non-alphanumeric characters
-- `matchAllTokens(normName, tokens)` — Checks if all search tokens appear in normalized name
+- `FilterPaths(paths, query)` — Filters an already-loaded list of directory paths by base name (`filepath.Base`); used by TUI live search for local branches and versions
+- `FilterStrings(items, query)` — Filters a list of plain strings by their full value; used for remote branch names that contain slashes (e.g. `feat/my-feature`)
+
+Internal helpers: `normalize(s)` (lowercase, alphanumeric only) and `matchAllTokens(normName, tokens)` (all-tokens-must-match check).
 
 **Search Algorithm:**
 
@@ -234,7 +235,7 @@ Formats search results for display.
 
 ## Command Orchestration
 
-**File:** `main.go` (689 lines)
+**File:** `main.go` (692 lines)
 
 Uses Cobra framework for command parsing and execution.
 
@@ -247,8 +248,10 @@ Uses Cobra framework for command parsing and execution.
 
 **Flag Handling:**
 
-- `--project/-p` and `--version/-v` are mutually exclusive options across commands
-- `--all/-a` limits result count on multi-match operations
+- `--project/-p` and `--version/-v` scope search to projects or versions only; available on `list`, `open`, `path`, and `convert`
+- `--all/-a` opts into acting on all matching results rather than requiring a single match; available on `open` and `convert`
+- `convert` requires both `--version` and `--project` (marked as required via Cobra)
+- `branch checkout` and `branch create` require `--repository` and `--branch`; `branch create` also requires `--base`
 - Flags parsed by Cobra; values stored in command-scoped variables
 
 **Key Design Patterns:**
@@ -358,12 +361,12 @@ Launched by `mx` with no arguments. Built with [Charm](https://charm.sh/) (Bubbl
 | `l` / `→` | apps panel | switch to versions panel |
 | `h` / `←` | versions panel | switch to apps panel |
 | `enter` | apps | view local branches |
-| `enter` | versions | open Studio Pro version → quit |
-| `enter` | branchList | open project → quit |
+| `enter` | versions | open Studio Pro version; stay in TUI |
+| `enter` | branchList | open project; stay in TUI |
 | `enter` | branchAction | confirm choice; fetch remote branches |
 | `enter` | remoteBranchList | select base (create) or checkout (checkout) |
-| `enter` | branchNameInput | create branch → open in Studio Pro → quit |
-| `s` | dual panel / branchList | open inline search |
+| `enter` | branchNameInput | create branch → open in Studio Pro; return to dual panel |
+| `s` | dual panel / branchList / remoteBranchList | open inline search |
 | `c` | apps / branchList | open create/checkout picker |
 | `o` | apps panel | open config file |
 | `esc` | branchList | back to dual panel |
@@ -381,7 +384,7 @@ Launched by `mx` with no arguments. Built with [Charm](https://charm.sh/) (Bubbl
 | typing | filters both Apps and Versions lists in real-time |
 | `↑` / `↓` | navigate the filtered results in the active panel |
 | `←` / `→` | switch between Apps and Versions panels (resets cursor) |
-| `enter` | select highlighted item (open branch list or open version → quit) |
+| `enter` | select highlighted item (open branch list or open version; stay in TUI) |
 | `esc` | cancel search; restore pre-search cursor positions |
 
 *Branch list:*
@@ -390,10 +393,27 @@ Launched by `mx` with no arguments. Built with [Charm](https://charm.sh/) (Bubbl
 |---|---|
 | typing | filters local branches in real-time |
 | `↑` / `↓` | navigate the filtered results |
-| `enter` | open the highlighted branch → quit |
+| `enter` | open the highlighted branch; stay in TUI |
 | `esc` | cancel search; restore pre-search cursor position |
 
-Search uses the same token-based normalization as the CLI (`search.SearchApps` / `search.FilterPaths`): lowercase, alphanumeric-only, all tokens must match.
+*Remote branch list:*
+
+| Key | Action |
+|---|---|
+| typing | filters remote branches in real-time (full name, including `feat/` prefix) |
+| `↑` / `↓` | navigate the filtered results |
+| `enter` | select base branch (create) or checkout the branch |
+| `esc` | cancel search; restore pre-search cursor position |
+
+Search uses the same token-based normalization as the CLI (`search.SearchApps` / `search.FilterPaths` / `search.FilterStrings`): lowercase, alphanumeric-only, all tokens must match. Remote branch search uses `FilterStrings` to match against the full branch name rather than just the final path segment.
+
+**Status feedback:** After completing an action, a green status message is shown on the current screen instead of quitting:
+
+- Opening a version → `"Opened <version-name>"` on the dual panel
+- Opening a local branch → `"Opened <branch-name>"` on the branch list
+- Completing a create/checkout → `"Created <dir>"` or `"Checked out <dir>"` on the dual panel
+
+The TUI only exits on `q` / `ctrl+c`. Status messages are cleared when navigating into a new branch list context.
 
 **Auto-sync:** If `config.Apps` is empty on startup and credentials are available, the TUI automatically triggers `platform.Sync` with a loading spinner before showing the apps panel.
 
