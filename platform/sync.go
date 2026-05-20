@@ -40,7 +40,7 @@ func Sync(ctx context.Context, cfg *config.Config, pat string, printer func(stri
 			}
 
 			mu.Lock()
-			apps = append(apps, config.App{Name: proj.Name, RepositoryURL: info.URL})
+			apps = append(apps, config.App{Name: proj.Name, AppID: info.AppID, RepositoryURL: info.URL})
 			mu.Unlock()
 		}(p)
 	}

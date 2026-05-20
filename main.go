@@ -8,6 +8,7 @@ import (
 	"mendix-pvm/platform"
 	"mendix-pvm/project"
 	"mendix-pvm/search"
+	"mendix-pvm/tui"
 	"mendix-pvm/ui"
 	"mendix-pvm/version"
 	"os"
@@ -72,6 +73,9 @@ Examples:
 	mx config
 	mx [command] --help (for details)
 `,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return tui.Run(cfg)
+		},
 	}
 
 	var configCmd = &cobra.Command{

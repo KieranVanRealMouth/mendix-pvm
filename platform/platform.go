@@ -85,6 +85,49 @@ type RepositoryInfo struct {
 	URL   string `json:"url"`
 }
 
+// --- GetBranches ---
+
+type Branch struct {
+	Name string `json:"name"`
+}
+
+type branchesPage struct {
+	Page  pageInfo   `json:"page"`
+	Items []Branch   `json:"items"`
+}
+
+func GetBranches(ctx context.Context, pat, appID string) ([]Branch, error) {
+	const pageLimit = 50
+	var all []Branch
+	for offset := 0; ; {
+		u := fmt.Sprintf(
+			"https://repository.api.mendix.com/v1/repositories/%s/branches?offset=%d&limit=%d",
+			url.PathEscape(appID),
+			offset,
+			pageLimit,
+		)
+		resp, err := doRequest(ctx, pat, http.MethodGet, u, nil)
+		if err != nil {
+			return nil, err
+		}
+		var page branchesPage
+		if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
+			resp.Body.Close()
+			return nil, err
+		}
+		resp.Body.Close()
+
+		all = append(all, page.Items...)
+		offset += len(page.Items)
+		if offset >= page.Page.TotalElements || len(page.Items) == 0 {
+			break
+		}
+	}
+	return all, nil
+}
+
+// --- GetRepositoryInfo ---
+
 func GetRepositoryInfo(ctx context.Context, pat, appID string) (RepositoryInfo, error) {
 	rawURL := fmt.Sprintf(
 		"https://repository.api.mendix.com/v1/repositories/%s/info",

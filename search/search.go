@@ -76,6 +76,27 @@ func matchAllTokens(normName string, tokens []string) bool {
 	return true
 }
 
+// FilterPaths filters an already-loaded list of directory paths by base name,
+// using the same normalization and token matching as SearchDir.
+func FilterPaths(paths []string, query string) []string {
+	var tokens []string
+	for _, q := range strings.Fields(query) {
+		if n := normalize(q); n != "" {
+			tokens = append(tokens, n)
+		}
+	}
+	if len(tokens) == 0 {
+		return paths
+	}
+	var matches []string
+	for _, p := range paths {
+		if matchAllTokens(normalize(filepath.Base(p)), tokens) {
+			matches = append(matches, p)
+		}
+	}
+	return matches
+}
+
 // SearchApps returns every app whose name matches all tokens derived from query.
 func SearchApps(apps []config.App, query string) []config.App {
 	tokens := []string{}

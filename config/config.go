@@ -18,6 +18,7 @@ const configFileName = ".mendix-pvm.json"
 
 type App struct {
 	Name          string `json:"name"`
+	AppID         string `json:"appId"`
 	RepositoryURL string `json:"repositoryUrl"`
 }
 

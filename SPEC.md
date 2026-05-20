@@ -16,7 +16,8 @@ main.go              — CLI command definitions and orchestration (Cobra)
 ├── convert/         — Project version conversion
 ├── search/          — Search and filtering logic
 ├── utils/           — Cross-platform utilities
-└── ui/              — Output formatting
+├── ui/              — Output formatting
+└── tui/             — Interactive terminal UI (Bubble Tea)
 ```
 
 ## Package Breakdown
@@ -39,6 +40,7 @@ type Config struct {
 
 type App struct {
     Name          string  // App name
+    AppID         string  // Mendix project UUID, needed for branches API
     RepositoryURL string  // Git repository URL
 }
 ```
@@ -107,6 +109,7 @@ Provides normalized search across projects and versions.
 
 - `SearchDir(searchPath, query)` — Searches filesystem for directories matching all query tokens
 - `SearchApps(apps, query)` — Searches app list (from config) by name
+- `FilterPaths(paths, query)` — Filters an already-loaded list of directory paths by base name; same normalization as `SearchDir` but without filesystem I/O (used by TUI live search)
 - `normalize(s)` — Converts strings to lowercase, removes non-alphanumeric characters
 - `matchAllTokens(normName, tokens)` — Checks if all search tokens appear in normalized name
 
@@ -129,8 +132,9 @@ Integrates with Mendix Platform APIs to discover and sync user applications.
 **Key Functions:**
 
 - `GetUserProjects(ctx, pat, userID)` — Fetches all projects user has access to; handles pagination
-- `GetRepositoryInfo(ctx, pat, projectID)` — Fetches repository URL and type for a project
-- `Sync(ctx, cfg, pat, printer)` — Orchestrates full sync: fetch projects → get repo info → filter Git repos → save config
+- `GetRepositoryInfo(ctx, pat, projectID)` — Fetches repository URL and type for a project; also returns `AppID` (UUID)
+- `GetBranches(ctx, pat, appID)` — Fetches all remote branches for an app (paginated); used by TUI branch operations
+- `Sync(ctx, cfg, pat, printer)` — Orchestrates full sync: fetch projects → get repo info → filter Git repos → save config (now populates `AppID`)
 
 **Sync Implementation:**
 
@@ -329,9 +333,63 @@ branch cloned and ready to open
 - **Platform API errors:** Return HTTP status code in error message
 - **Git operations:** Stream stderr to user for debugging
 
+## `tui` — Interactive Terminal UI
+
+**Files:** `tui/tui.go`, `tui/update.go`, `tui/view.go`, `tui/styles.go`
+
+Launched by `mx` with no arguments. Built with [Charm](https://charm.sh/) (Bubble Tea + Lip Gloss + Bubbles).
+
+**Screens:**
+
+| Screen | Description |
+|---|---|
+| `screenDualPanel` | Two side-by-side panels: Apps (left) and Versions (right) |
+| `screenBranchList` | Local project directories matching the selected app |
+| `screenBranchAction` | Create / Checkout picker for the selected app |
+| `screenRemoteBranchList` | Remote branches from Mendix API (base selection or checkout target) |
+| `screenBranchNameInput` | Text input for new branch name (create flow) |
+| `screenLoading` | Spinner shown during API calls and git operations |
+
+**Key Bindings — normal mode:**
+
+| Key | Panel/Screen | Action |
+|---|---|---|
+| `j` / `↓`, `k` / `↑` | all | navigate list |
+| `l` / `→` | apps panel | switch to versions panel |
+| `h` / `←` | versions panel | switch to apps panel |
+| `enter` | apps | view local branches |
+| `enter` | versions | open Studio Pro version → quit |
+| `enter` | branchList | open project → quit |
+| `enter` | branchAction | confirm choice; fetch remote branches |
+| `enter` | remoteBranchList | select base (create) or checkout (checkout) |
+| `enter` | branchNameInput | create branch → open in Studio Pro → quit |
+| `s` | dual panel | open inline search |
+| `c` | apps / branchList | open create/checkout picker |
+| `o` | apps panel | open config file |
+| `esc` | branchList | back to dual panel |
+| `esc` | branchAction | back to origin screen |
+| `esc` | remoteBranchList | back to branch action |
+| `esc` | branchNameInput | back to remote branch list |
+| `q` / `ctrl+c` | all | quit |
+
+**Key Bindings — search mode (`s` key):**
+
+| Key | Action |
+|---|---|
+| typing | filters both Apps and Versions lists in real-time |
+| `↑` / `↓` | navigate the filtered results in the active panel |
+| `←` / `→` | switch between Apps and Versions panels (resets cursor) |
+| `enter` | select highlighted item (open branch list or open version → quit) |
+| `esc` | cancel search; restore pre-search cursor positions |
+
+Search uses the same token-based normalization as the CLI (`search.SearchApps` / `search.FilterPaths`): lowercase, alphanumeric-only, all tokens must match.
+
+**Auto-sync:** If `config.Apps` is empty on startup and credentials are available, the TUI automatically triggers `platform.Sync` with a loading spinner before showing the apps panel.
+
+**Entry point:** `tui.Run(cfg *config.Config) error` — called from the root Cobra command when `mx` is invoked with no arguments.
+
 ## Future Enhancements
 
-- **TUI Interface:** Interactive terminal UI on base `mx` command (no arguments)
 - **Concurrent Conversions:** Parallel conversion support for multiple projects
 - **XDG_CONFIG_HOME Support:** Full XDG Base Directory specification for Linux/macOS
 - **Multiple Project Directories:** Config extension to support array of project paths
