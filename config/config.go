@@ -28,25 +28,42 @@ type Config struct {
 	Apps             []App  `json:"apps"`
 }
 
+// wslWindowsHome converts the Windows USERPROFILE path (e.g. C:\Users\kegmond)
+// to its WSL mount equivalent (e.g. /mnt/c/Users/kegmond).
+func wslWindowsHome() string {
+	up := os.Getenv("USERPROFILE")
+	if up == "" || len(up) < 2 || up[1] != ':' {
+		return ""
+	}
+	drive := strings.ToLower(string(up[0]))
+	return "/mnt/" + drive + filepath.ToSlash(up[2:])
+}
+
 func create() (Config, error) {
-	var versionDir string
+	var versionDir, projectDir string
+
 	switch utils.Platform() {
 	case "windows":
-		programFiles := os.Getenv("ProgramFiles")
-		if programFiles != "" {
-			versionDir = filepath.Join(programFiles, "Mendix")
+		if pf := os.Getenv("ProgramFiles"); pf != "" {
+			versionDir = filepath.Join(pf, "Mendix")
+		}
+		if up := os.Getenv("USERPROFILE"); up != "" {
+			projectDir = filepath.Join(up, "Mendix")
 		}
 	case "wsl":
 		versionDir = "/mnt/c/Program Files/Mendix"
-	default: // darwin, linux — user must set via config
-		versionDir = ""
+		if winHome := wslWindowsHome(); winHome != "" {
+			projectDir = filepath.Join(winHome, "Mendix")
+		}
 	}
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return Config{}, fmt.Errorf("failed to determine user home directory: %w", err)
+	if projectDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return Config{}, fmt.Errorf("failed to determine user home directory: %w", err)
+		}
+		projectDir = filepath.Join(home, "Mendix")
 	}
-	projectDir := filepath.Join(home, "Mendix")
 
 	cfg := Config{
 		VersionDirectory: versionDir,
