@@ -119,18 +119,43 @@ func (m model) viewDualPanel() string {
 
 func (m model) viewBranchList() string {
 	title := "Local branches — " + m.selectedApp.Name
-	listH := m.height - 5
+
+	reserved := 5
+	if m.searching {
+		reserved++
+	}
+	listH := m.height - reserved
 	if listH < 1 {
 		listH = 1
 	}
 
-	items := make([]string, len(m.branches))
-	for i, b := range m.branches {
+	displayBranches := m.branches
+	if m.searching && m.searchInput.Value() != "" {
+		displayBranches = search.FilterPaths(m.branches, m.searchInput.Value())
+	}
+
+	branchCursor := m.branchCursor
+	if branchCursor >= len(displayBranches) {
+		branchCursor = max(0, len(displayBranches)-1)
+	}
+
+	items := make([]string, len(displayBranches))
+	for i, b := range displayBranches {
 		items[i] = filepath.Base(b)
 	}
 
-	footer := footerStyle.Render("(j/k) navigate  (enter) open  (c) create/checkout  (esc) back  (q) quit")
-	return renderScreen(title, m.width, renderItemList(items, m.branchCursor, listH, m.width-3), m.errMsg, footer)
+	body := renderItemList(items, branchCursor, listH, m.width-3)
+	if m.searching {
+		body += "  Search: " + m.searchInput.View() + "\n"
+	}
+
+	var footer string
+	if m.searching {
+		footer = footerStyle.Render("(↑/↓) navigate results  (enter) open  (esc) cancel search")
+	} else {
+		footer = footerStyle.Render("(j/k) navigate  (enter) open  (c) create/checkout  (s) search  (esc) back  (q) quit")
+	}
+	return renderScreen(title, m.width, body, m.errMsg, footer)
 }
 
 func (m model) viewBranchAction() string {

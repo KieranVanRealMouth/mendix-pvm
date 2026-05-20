@@ -363,7 +363,7 @@ Launched by `mx` with no arguments. Built with [Charm](https://charm.sh/) (Bubbl
 | `enter` | branchAction | confirm choice; fetch remote branches |
 | `enter` | remoteBranchList | select base (create) or checkout (checkout) |
 | `enter` | branchNameInput | create branch → open in Studio Pro → quit |
-| `s` | dual panel | open inline search |
+| `s` | dual panel / branchList | open inline search |
 | `c` | apps / branchList | open create/checkout picker |
 | `o` | apps panel | open config file |
 | `esc` | branchList | back to dual panel |
@@ -374,6 +374,8 @@ Launched by `mx` with no arguments. Built with [Charm](https://charm.sh/) (Bubbl
 
 **Key Bindings — search mode (`s` key):**
 
+*Dual panel:*
+
 | Key | Action |
 |---|---|
 | typing | filters both Apps and Versions lists in real-time |
@@ -381,6 +383,15 @@ Launched by `mx` with no arguments. Built with [Charm](https://charm.sh/) (Bubbl
 | `←` / `→` | switch between Apps and Versions panels (resets cursor) |
 | `enter` | select highlighted item (open branch list or open version → quit) |
 | `esc` | cancel search; restore pre-search cursor positions |
+
+*Branch list:*
+
+| Key | Action |
+|---|---|
+| typing | filters local branches in real-time |
+| `↑` / `↓` | navigate the filtered results |
+| `enter` | open the highlighted branch → quit |
+| `esc` | cancel search; restore pre-search cursor position |
 
 Search uses the same token-based normalization as the CLI (`search.SearchApps` / `search.FilterPaths`): lowercase, alphanumeric-only, all tokens must match.
 

@@ -265,12 +265,22 @@ func (m model) updateSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) updateBranchList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.searching {
+		return m.updateBranchSearchMode(msg)
+	}
+
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "esc":
 		m.screen = screenDualPanel
 		m.errMsg = ""
+	case "s":
+		m.searching = true
+		m.savedBranchCursor = m.branchCursor
+		m.branchCursor = 0
+		m.searchInput.SetValue("")
+		m.searchInput.Focus()
 	case "j", "down":
 		if m.branchCursor < len(m.branches)-1 {
 			m.branchCursor++
@@ -292,6 +302,57 @@ func (m model) updateBranchList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.screen = screenBranchAction
 	}
 	return m, nil
+}
+
+func (m model) updateBranchSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyCtrlC:
+		return m, tea.Quit
+
+	case tea.KeyEsc:
+		m.searching = false
+		m.branchCursor = m.savedBranchCursor
+		m.searchInput.Blur()
+		m.searchInput.SetValue("")
+		return m, nil
+
+	case tea.KeyEnter:
+		filtered := search.FilterPaths(m.branches, m.searchInput.Value())
+		m.searching = false
+		m.searchInput.Blur()
+		if len(filtered) > 0 {
+			_ = project.Open(filtered[m.branchCursor])
+			return m, tea.Quit
+		}
+		return m, nil
+
+	case tea.KeyUp:
+		if m.branchCursor > 0 {
+			m.branchCursor--
+		}
+		return m, nil
+
+	case tea.KeyDown:
+		filtered := search.FilterPaths(m.branches, m.searchInput.Value())
+		if m.branchCursor < len(filtered)-1 {
+			m.branchCursor++
+		}
+		return m, nil
+	}
+
+	oldQuery := m.searchInput.Value()
+	var cmd tea.Cmd
+	m.searchInput, cmd = m.searchInput.Update(msg)
+	newQuery := m.searchInput.Value()
+
+	if oldQuery != newQuery {
+		filtered := search.FilterPaths(m.branches, newQuery)
+		if m.branchCursor >= len(filtered) {
+			m.branchCursor = max(0, len(filtered)-1)
+		}
+	}
+
+	return m, cmd
 }
 
 func (m model) updateBranchAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
