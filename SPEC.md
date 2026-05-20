@@ -1,8 +1,3 @@
----
-tags:
-  - technical specification
----
-
 # Mendix PVM — Technical Specification
 
 A CLI tool for managing Mendix Studio Pro versions and projects. Built in Go with Cobra for command parsing.
@@ -336,8 +331,8 @@ branch cloned and ready to open
 
 ## Future Enhancements
 
+- **TUI Interface:** Interactive terminal UI on base `mx` command (no arguments)
+- **Concurrent Conversions:** Parallel conversion support for multiple projects
 - **XDG_CONFIG_HOME Support:** Full XDG Base Directory specification for Linux/macOS
 - **Multiple Project Directories:** Config extension to support array of project paths
 - **Result Caching:** Cache search results with invalidation on filesystem changes
-- **TUI Interface:** Interactive terminal UI on base `mx` command (no arguments)
-- **Concurrent Conversions:** Parallel conversion support for multiple projects
