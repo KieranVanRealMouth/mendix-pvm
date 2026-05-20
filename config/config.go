@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"mendix-pvm/utils"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,15 +30,15 @@ type Config struct {
 
 func create() (Config, error) {
 	var versionDir string
-	switch runtime.GOOS {
+	switch utils.Platform() {
 	case "windows":
 		programFiles := os.Getenv("ProgramFiles")
 		if programFiles != "" {
 			versionDir = filepath.Join(programFiles, "Mendix")
 		}
-	case "darwin":
-		return Config{}, fmt.Errorf("macOS is not supported")
-	default:
+	case "wsl":
+		versionDir = "/mnt/c/Program Files/Mendix"
+	default: // darwin, linux — user must set via config
 		versionDir = ""
 	}
 
@@ -208,13 +209,5 @@ func Open(config *Config) error {
 	if err != nil {
 		return err
 	}
-
-	switch runtime.GOOS {
-	case "windows":
-		return exec.Command("cmd", "/c", "start", "", configPath).Start()
-	case "darwin":
-		return exec.Command("open", configPath).Start()
-	default:
-		return exec.Command("xdg-open", configPath).Start()
-	}
+	return utils.OpenFile(configPath)
 }
