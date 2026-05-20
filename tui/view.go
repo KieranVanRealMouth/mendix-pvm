@@ -35,8 +35,8 @@ func (m model) viewDualPanel() string {
 	lw := m.width / 2
 	rw := m.width - lw
 
-	// Reserve one extra line when the search bar is visible
-	reserved := 4
+	// Reserve one extra line when the search bar is visible; one per active job
+	reserved := 4 + len(m.bgJobs)
 	if m.searching {
 		reserved++
 	}
@@ -119,13 +119,13 @@ func (m model) viewDualPanel() string {
 		errLine = "\n" + errorStyle.Render(m.errMsg)
 	}
 
-	return panels + searchBar + statusLine + errLine + "\n" + footer
+	return panels + searchBar + statusLine + errLine + "\n" + m.renderJobsBar() + footer
 }
 
 func (m model) viewBranchList() string {
 	title := "Local branches — " + m.selectedApp.Name
 
-	reserved := 5
+	reserved := 5 + len(m.bgJobs)
 	if m.searching {
 		reserved++
 	}
@@ -160,18 +160,18 @@ func (m model) viewBranchList() string {
 	} else {
 		footer = footerStyle.Render("(j/k) navigate  (enter) open  (c) create/checkout  (s) search  (esc) back  (q) quit")
 	}
-	return renderScreen(title, m.width, body, m.statusMsg, m.errMsg, footer)
+	return renderScreen(title, m.width, body, m.renderJobsBar(), m.statusMsg, m.errMsg, footer)
 }
 
 func (m model) viewBranchAction() string {
 	title := m.selectedApp.Name + " — what would you like to do?"
 	items := []string{"Create branch", "Checkout branch"}
-	listH := m.height - 5
+	listH := m.height - 5 - len(m.bgJobs)
 	if listH < 1 {
 		listH = 1
 	}
 	footer := footerStyle.Render("(j/k) navigate  (enter) select  (esc) back")
-	return renderScreen(title, m.width, renderItemList(items, m.branchActionCursor, listH, m.width-3), "", m.errMsg, footer)
+	return renderScreen(title, m.width, renderItemList(items, m.branchActionCursor, listH, m.width-3), m.renderJobsBar(), "", m.errMsg, footer)
 }
 
 func (m model) viewRemoteBranchList() string {
@@ -182,7 +182,7 @@ func (m model) viewRemoteBranchList() string {
 		title = "Select branch to checkout — " + m.selectedApp.Name
 	}
 
-	reserved := 5
+	reserved := 5 + len(m.bgJobs)
 	if m.searching {
 		reserved++
 	}
@@ -219,18 +219,18 @@ func (m model) viewRemoteBranchList() string {
 		footerText = "(j/k) navigate  (enter) checkout  (s) search  (esc) back  (q) quit"
 	}
 	footer := footerStyle.Render(footerText)
-	return renderScreen(title, m.width, body, "", m.errMsg, footer)
+	return renderScreen(title, m.width, body, m.renderJobsBar(), "", m.errMsg, footer)
 }
 
 func (m model) viewBranchNameInput() string {
 	title := fmt.Sprintf("New branch from '%s' — %s", m.selectedBase, m.selectedApp.Name)
 	body := "\n  Branch name: " + m.nameInput.View() + "\n\n"
 	footer := footerStyle.Render("(enter) create  (esc) cancel")
-	return renderScreen(title, m.width, body, m.statusMsg, m.errMsg, footer)
+	return renderScreen(title, m.width, body, m.renderJobsBar(), m.statusMsg, m.errMsg, footer)
 }
 
-// renderScreen renders a full-width screen with a title, separator, body, optional status/error, and footer.
-func renderScreen(title string, width int, body, statusMsg, errMsg, footer string) string {
+// renderScreen renders a full-width screen with a title, separator, body, optional status/error, jobs bar, and footer.
+func renderScreen(title string, width int, body, jobsBar, statusMsg, errMsg, footer string) string {
 	sep := strings.Repeat("─", width)
 	var statusLine string
 	if statusMsg != "" {
@@ -240,7 +240,33 @@ func renderScreen(title string, width int, body, statusMsg, errMsg, footer strin
 	if errMsg != "" {
 		errLine = errorStyle.Render(errMsg) + "\n"
 	}
-	return title + "\n" + sep + "\n" + body + statusLine + errLine + footer
+	return title + "\n" + sep + "\n" + body + statusLine + errLine + jobsBar + footer
+}
+
+func (m model) renderJobsBar() string {
+	if len(m.bgJobs) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for _, j := range m.bgJobs {
+		if j.done {
+			if j.err != nil {
+				sb.WriteString(errorStyle.Render("✗ "+j.label+": "+firstLine(j.err.Error())) + "\n")
+			} else {
+				sb.WriteString(successStyle.Render("✓ "+j.label) + "\n")
+			}
+		} else {
+			sb.WriteString(footerStyle.Render(m.spinner.View()+" "+j.label) + "\n")
+		}
+	}
+	return sb.String()
+}
+
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i]
+	}
+	return s
 }
 
 // renderItemList renders a scrollable list of items with the cursor highlighted.

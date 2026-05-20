@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -53,8 +54,19 @@ type branchesLoadedMsg struct {
 }
 
 type branchOpDoneMsg struct {
+	jobID   int
 	destDir string
 	err     error
+}
+
+type clearJobMsg struct{ id int }
+
+// bgJob tracks a background branch operation displayed in the footer.
+type bgJob struct {
+	id    int
+	label string
+	done  bool
+	err   error
 }
 
 type model struct {
@@ -102,6 +114,10 @@ type model struct {
 	// Loading
 	spinner    spinner.Model
 	loadingMsg string
+
+	// Background jobs shown in footer
+	bgJobs    []bgJob
+	nextJobID int
 
 	// Inline error / status
 	errMsg    string
@@ -173,29 +189,36 @@ func getBranchesCmd(ctx context.Context, pat, appID string) tea.Cmd {
 	}
 }
 
-func checkoutBranchCmd(ctx context.Context, cfg *config.Config, app config.App, branchName string) tea.Cmd {
+func checkoutBranchCmd(ctx context.Context, cfg *config.Config, app config.App, branchName string, jobID int) tea.Cmd {
 	return func() tea.Msg {
 		safeBranch := strings.ReplaceAll(branchName, "/", "_")
 		destDir := filepath.Join(cfg.ProjectDirectory, app.Name+"-"+safeBranch)
 		var errBuf bytes.Buffer
 		err := branch.Checkout(ctx, app, branchName, destDir, io.Discard, &errBuf)
 		if err != nil {
-			return branchOpDoneMsg{err: fmt.Errorf("%w\n%s", err, strings.TrimSpace(errBuf.String()))}
+			return branchOpDoneMsg{jobID: jobID, err: fmt.Errorf("%w\n%s", err, strings.TrimSpace(errBuf.String()))}
 		}
-		return branchOpDoneMsg{destDir: destDir}
+		return branchOpDoneMsg{jobID: jobID, destDir: destDir}
 	}
 }
 
-func createBranchCmd(ctx context.Context, cfg *config.Config, app config.App, branchName, baseBranch string) tea.Cmd {
+func createBranchCmd(ctx context.Context, cfg *config.Config, app config.App, branchName, baseBranch string, jobID int) tea.Cmd {
 	return func() tea.Msg {
 		var errBuf bytes.Buffer
 		err := branch.Create(ctx, cfg, app, branchName, baseBranch, io.Discard, &errBuf)
 		safeBranch := strings.ReplaceAll(branchName, "/", "_")
 		destDir := filepath.Join(cfg.ProjectDirectory, app.Name+"-"+safeBranch)
 		if err != nil {
-			return branchOpDoneMsg{err: fmt.Errorf("%w\n%s", err, strings.TrimSpace(errBuf.String()))}
+			return branchOpDoneMsg{jobID: jobID, err: fmt.Errorf("%w\n%s", err, strings.TrimSpace(errBuf.String()))}
 		}
-		return branchOpDoneMsg{destDir: destDir}
+		return branchOpDoneMsg{jobID: jobID, destDir: destDir}
+	}
+}
+
+func clearJobAfterCmd(id int) tea.Cmd {
+	return func() tea.Msg {
+		time.Sleep(4 * time.Second)
+		return clearJobMsg{id: id}
 	}
 }
 

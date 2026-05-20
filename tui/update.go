@@ -51,24 +51,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case branchOpDoneMsg:
-		if msg.err != nil {
-			m.errMsg = msg.err.Error()
-			if m.branchMode == branchModeCheckout {
-				m.screen = screenRemoteBranchList
-			} else {
-				m.screen = screenBranchNameInput
-				m.nameInput.Focus()
+		for i := range m.bgJobs {
+			if m.bgJobs[i].id == msg.jobID {
+				m.bgJobs[i].done = true
+				m.bgJobs[i].err = msg.err
+				if msg.err == nil {
+					_ = project.Open(msg.destDir)
+				}
+				break
 			}
-			return m, nil
 		}
-		_ = project.Open(msg.destDir)
-		action := "Checked out"
-		if m.branchMode == branchModeCreate {
-			action = "Created"
+		return m, clearJobAfterCmd(msg.jobID)
+
+	case clearJobMsg:
+		for i, j := range m.bgJobs {
+			if j.id == msg.id {
+				m.bgJobs = append(m.bgJobs[:i], m.bgJobs[i+1:]...)
+				break
+			}
 		}
-		m.statusMsg = action + " " + filepath.Base(msg.destDir)
-		m.errMsg = ""
-		m.screen = screenDualPanel
 		return m, nil
 
 	case tea.KeyMsg:
@@ -499,10 +500,14 @@ func (m model) updateRemoteBranchSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd)
 
 func (m model) selectRemoteBranch(name string) (tea.Model, tea.Cmd) {
 	if m.branchMode == branchModeCheckout {
-		m.screen = screenLoading
-		m.loadingMsg = "Checking out '" + name + "'..."
+		jobID := m.nextJobID
+		m.nextJobID++
+		m.bgJobs = append(m.bgJobs, bgJob{id: jobID, label: "Checkout " + m.selectedApp.Name + " / " + name})
+		m.screen = screenDualPanel
+		m.searching = false
+		m.searchInput.Blur()
 		m.errMsg = ""
-		return m, checkoutBranchCmd(m.ctx, m.cfg, m.selectedApp, name)
+		return m, checkoutBranchCmd(m.ctx, m.cfg, m.selectedApp, name, jobID)
 	}
 	m.selectedBase = name
 	m.screen = screenBranchNameInput
@@ -535,10 +540,13 @@ func (m model) updateBranchNameInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.errMsg = "Branch name cannot be empty."
 			return m, nil
 		}
-		m.screen = screenLoading
-		m.loadingMsg = "Creating branch '" + branchName + "'..."
+		jobID := m.nextJobID
+		m.nextJobID++
+		m.bgJobs = append(m.bgJobs, bgJob{id: jobID, label: "Create " + m.selectedApp.Name + " / " + branchName})
+		m.screen = screenDualPanel
+		m.nameInput.Blur()
 		m.errMsg = ""
-		return m, createBranchCmd(m.ctx, m.cfg, m.selectedApp, branchName, m.selectedBase)
+		return m, createBranchCmd(m.ctx, m.cfg, m.selectedApp, branchName, m.selectedBase, jobID)
 	}
 	var cmd tea.Cmd
 	m.nameInput, cmd = m.nameInput.Update(msg)

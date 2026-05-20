@@ -357,7 +357,7 @@ Launched by `mx` with no arguments. Built with [Charm](https://charm.sh/) (Bubbl
 | `screenBranchAction` | Create / Checkout picker for the selected app |
 | `screenRemoteBranchList` | Remote branches from Mendix API (base selection or checkout target) |
 | `screenBranchNameInput` | Text input for new branch name (create flow) |
-| `screenLoading` | Spinner shown during API calls and git operations |
+| `screenLoading` | Spinner shown during API calls (sync, remote branch fetch) |
 
 **Key Bindings — normal mode:**
 
@@ -370,8 +370,8 @@ Launched by `mx` with no arguments. Built with [Charm](https://charm.sh/) (Bubbl
 | `enter` | versions | open Studio Pro version; stay in TUI |
 | `enter` | branchList | open project; stay in TUI |
 | `enter` | branchAction | confirm choice; fetch remote branches |
-| `enter` | remoteBranchList | select base (create) or checkout (checkout) |
-| `enter` | branchNameInput | create branch → open in Studio Pro; return to dual panel |
+| `enter` | remoteBranchList | select base (create) or start checkout in background → return to dual panel |
+| `enter` | branchNameInput | start branch create in background → return to dual panel |
 | `s` | dual panel / branchList / remoteBranchList | open inline search |
 | `c` | apps / branchList | open create/checkout picker |
 | `o` | apps panel | open config file |
@@ -417,9 +417,22 @@ Search uses the same token-based normalization as the CLI (`search.SearchApps` /
 
 - Opening a version → `"Opened <version-name>"` on the dual panel
 - Opening a local branch → `"Opened <branch-name>"` on the branch list
-- Completing a create/checkout → `"Created <dir>"` or `"Checked out <dir>"` on the dual panel
 
 The TUI only exits on `q` / `ctrl+c`. Status messages are cleared when navigating into a new branch list context.
+
+**Background branch operations:** Checkout and create operations run in the background so the user can continue navigating or start additional operations concurrently. Progress is shown in a jobs bar rendered above the footer on every screen:
+
+- Running: `⠋ Checkout <app> / <branch>` (animated spinner)
+- Success: `✓ Checkout <app> / <branch>` (green); project opens automatically
+- Failure: `✗ Checkout <app> / <branch>: <first line of error>` (red)
+
+Completed jobs (success or failure) are removed automatically after 4 seconds. Multiple jobs can be in-flight at the same time; each occupies one line and the list height adjusts accordingly.
+
+**Internal types:**
+
+- `bgJob{id, label, done, err}` — tracks a single background operation
+- `branchOpDoneMsg{jobID, destDir, err}` — returned by `checkoutBranchCmd` / `createBranchCmd` when done
+- `clearJobMsg{id}` — fired after a 4-second delay to remove a completed job from the footer
 
 **Auto-sync:** If `config.Apps` is empty on startup and credentials are available, the TUI automatically triggers `platform.Sync` with a loading spinner before showing the apps panel.
 
