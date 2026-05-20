@@ -175,6 +175,12 @@ Manages cloning and creating Git branches from Mendix Platform repositories.
 1. Check if branch exists on remote; create if not (via git push)
 2. Clone the branch using checkout flow
 3. Optionally open in Studio Pro if --open flag set
+4. On any git failure after directory creation, removes the partial directory before returning the error
+
+**Git Error Handling:**
+
+- All git commands run with `GIT_TERMINAL_PROMPT=0` — credential prompts are suppressed; auth failures surface as a clean error message immediately
+- `Create` cleans up the destination directory (`os.RemoveAll`) if any git step fails after `os.MkdirAll`, preventing phantom directories that would block retries
 
 **Project ID Extraction:**
 

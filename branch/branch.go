@@ -115,6 +115,7 @@ func Checkout(ctx context.Context, app config.App, branchName, destDir string, s
 		app.RepositoryURL,
 		destDir,
 	)
+	gitCmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	gitCmd.Stdout = stdout
 	gitCmd.Stderr = stderr
 	if err := gitCmd.Run(); err != nil {
@@ -154,7 +155,9 @@ func Create(ctx context.Context, cfg *config.Config, app config.App, branchName,
 	}
 
 	// Check whether the branch exists on the remote
-	out, err := exec.CommandContext(ctx, "git", "ls-remote", "--heads", app.RepositoryURL, branchName).Output()
+	lsRemote := exec.CommandContext(ctx, "git", "ls-remote", "--heads", app.RepositoryURL, branchName)
+	lsRemote.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	out, err := lsRemote.Output()
 	branchExists := err == nil && len(strings.TrimSpace(string(out))) > 0
 
 	if branchExists {
@@ -169,12 +172,20 @@ func Create(ctx context.Context, cfg *config.Config, app config.App, branchName,
 	// Branch does not exist — create it on the remote, then check it out
 	fmt.Fprintf(stdout, "Branch %q does not exist on remote. Creating from %q into:\n  %s\n", branchName, baseBranch, destDir)
 
+	gitEnv := append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+
 	run := func(dir string, args ...string) error {
 		c := exec.CommandContext(ctx, args[0], args[1:]...)
 		c.Dir = dir
+		c.Env = gitEnv
 		c.Stdout = stdout
 		c.Stderr = stderr
 		return c.Run()
+	}
+
+	cleanup := func(err error) error {
+		os.RemoveAll(destDir)
+		return err
 	}
 
 	if err := os.MkdirAll(destDir, 0755); err != nil {
@@ -182,27 +193,27 @@ func Create(ctx context.Context, cfg *config.Config, app config.App, branchName,
 	}
 
 	if err := run(destDir, "git", "init"); err != nil {
-		return fmt.Errorf("git init failed: %w", err)
+		return cleanup(fmt.Errorf("git init failed: %w", err))
 	}
 
 	if err := run(destDir, "git", "remote", "add", "origin", app.RepositoryURL); err != nil {
-		return fmt.Errorf("git remote add failed: %w", err)
+		return cleanup(fmt.Errorf("git remote add failed: %w", err))
 	}
 
 	if err := run(destDir, "git", "fetch", "origin", baseBranch); err != nil {
-		return fmt.Errorf("git fetch base branch %q failed: %w", baseBranch, err)
+		return cleanup(fmt.Errorf("git fetch base branch %q failed: %w", baseBranch, err))
 	}
 
 	if err := run(destDir, "git", "push", "origin", "FETCH_HEAD:refs/heads/"+branchName); err != nil {
-		return fmt.Errorf("git push failed: %w", err)
+		return cleanup(fmt.Errorf("git push failed: %w", err))
 	}
 
 	if err := run(destDir, "git", "fetch", "origin", branchName); err != nil {
-		return fmt.Errorf("git fetch new branch %q failed: %w", branchName, err)
+		return cleanup(fmt.Errorf("git fetch new branch %q failed: %w", branchName, err))
 	}
 
 	if err := run(destDir, "git", "checkout", "-b", branchName, "--track", "origin/"+branchName); err != nil {
-		return fmt.Errorf("git checkout failed: %w", err)
+		return cleanup(fmt.Errorf("git checkout failed: %w", err))
 	}
 
 	// attempt to set sprintr-project-id in .git/config for Mendix hosted repos
