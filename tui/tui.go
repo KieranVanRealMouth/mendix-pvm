@@ -10,9 +10,11 @@ import (
 	"mendix-pvm/platform"
 	"mendix-pvm/version"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -119,9 +121,8 @@ type model struct {
 	loadingMsg string
 
 	// Background jobs shown in footer
-	bgJobs         []bgJob
-	nextJobID      int
-	confirmingQuit bool
+	bgJobs    []bgJob
+	nextJobID int
 
 	// Inline error / status
 	errMsg    string
@@ -202,16 +203,16 @@ func getBranchesCmd(ctx context.Context, pat, appID string) tea.Cmd {
 
 func checkoutBranchCmd(ctx context.Context, wg *sync.WaitGroup, cfg *config.Config, app config.App, branchName string, jobID int) tea.Cmd {
 	wg.Add(1)
+	signal.Ignore(syscall.SIGINT)
 	return func() tea.Msg {
-		defer wg.Done()
+		defer func() {
+			wg.Done()
+			signal.Reset(syscall.SIGINT)
+		}()
 		safeBranch := strings.ReplaceAll(branchName, "/", "_")
 		destDir := filepath.Join(cfg.ProjectDirectory, app.Name+"-"+safeBranch)
 		var errBuf bytes.Buffer
 		err := branch.Checkout(ctx, app, branchName, destDir, io.Discard, &errBuf)
-		if ctx.Err() != nil {
-			os.RemoveAll(destDir)
-			return branchOpDoneMsg{jobID: jobID, err: ctx.Err()}
-		}
 		if err != nil {
 			return branchOpDoneMsg{jobID: jobID, err: fmt.Errorf("%w\n%s", err, strings.TrimSpace(errBuf.String()))}
 		}
@@ -221,16 +222,16 @@ func checkoutBranchCmd(ctx context.Context, wg *sync.WaitGroup, cfg *config.Conf
 
 func createBranchCmd(ctx context.Context, wg *sync.WaitGroup, cfg *config.Config, app config.App, branchName, baseBranch string, jobID int) tea.Cmd {
 	wg.Add(1)
+	signal.Ignore(syscall.SIGINT)
 	return func() tea.Msg {
-		defer wg.Done()
+		defer func() {
+			wg.Done()
+			signal.Reset(syscall.SIGINT)
+		}()
 		var errBuf bytes.Buffer
 		err := branch.Create(ctx, cfg, app, branchName, baseBranch, io.Discard, &errBuf)
 		safeBranch := strings.ReplaceAll(branchName, "/", "_")
 		destDir := filepath.Join(cfg.ProjectDirectory, app.Name+"-"+safeBranch)
-		if ctx.Err() != nil {
-			os.RemoveAll(destDir)
-			return branchOpDoneMsg{jobID: jobID, err: ctx.Err()}
-		}
 		if err != nil {
 			return branchOpDoneMsg{jobID: jobID, err: fmt.Errorf("%w\n%s", err, strings.TrimSpace(errBuf.String()))}
 		}

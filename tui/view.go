@@ -25,9 +25,6 @@ func (m model) View() string {
 	case screenBranchNameInput:
 		content = m.viewBranchNameInput()
 	}
-	if m.confirmingQuit {
-		content += errorStyle.Render("Jobs are still running. Quit anyway? (y/q = yes, any other key = no)")
-	}
 	return content
 }
 
