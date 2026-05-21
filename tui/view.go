@@ -26,7 +26,7 @@ func (m model) View() string {
 		content = m.viewBranchNameInput()
 	}
 	if m.confirmingQuit {
-		content += errorStyle.Render("Jobs are still running. Quit anyway? (y/n)")
+		content += errorStyle.Render("Jobs are still running. Quit anyway? (y/q = yes, any other key = no)")
 	}
 	return content
 }
