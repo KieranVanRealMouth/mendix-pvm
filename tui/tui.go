@@ -63,7 +63,7 @@ type branchOpDoneMsg struct {
 }
 
 type clearJobMsg struct{ id int }
-type clearErrMsgMsg struct{}
+type clearMsgMsg struct{}
 
 // bgJob tracks a background branch operation displayed in the footer.
 type bgJob struct {
@@ -125,6 +125,9 @@ type model struct {
 	bgJobs    []bgJob
 	nextJobID int
 
+	// Session action log printed after TUI exits
+	actionLog []string
+
 	// Inline error / status
 	errMsg    string
 	statusMsg string
@@ -180,9 +183,15 @@ func Run(cfg *config.Config) error {
 	}
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
-	_, err := p.Run()
+	finalModel, err := p.Run()
 	cancel()
 	wg.Wait()
+	if fm, ok := finalModel.(model); ok && len(fm.actionLog) > 0 {
+		fmt.Println()
+		for _, entry := range fm.actionLog {
+			fmt.Println(entry)
+		}
+	}
 	return err
 }
 
@@ -240,10 +249,10 @@ func createBranchCmd(ctx context.Context, wg *sync.WaitGroup, cfg *config.Config
 	}
 }
 
-func clearErrMsgAfterCmd() tea.Cmd {
+func clearMsgAfterCmd() tea.Cmd {
 	return func() tea.Msg {
 		time.Sleep(5 * time.Second)
-		return clearErrMsgMsg{}
+		return clearMsgMsg{}
 	}
 }
 

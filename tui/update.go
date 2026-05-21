@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"mendix-pvm/config"
 	"mendix-pvm/platform"
 	"mendix-pvm/project"
@@ -8,6 +9,7 @@ import (
 	"mendix-pvm/version"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
@@ -28,13 +30,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case syncDoneMsg:
 		if msg.err != nil {
 			m.errMsg = "Sync failed: " + msg.err.Error()
-		} else {
-			m.apps = append([]config.App{}, m.cfg.Apps...)
-			if m.appCursor >= len(m.apps) {
-				m.appCursor = 0
-			}
-			m.errMsg = ""
+			m.actionLog = append(m.actionLog, logEntry("Sync failed: "+msg.err.Error()))
+			m.screen = screenDualPanel
+			return m, clearMsgAfterCmd()
 		}
+		m.apps = append([]config.App{}, m.cfg.Apps...)
+		if m.appCursor >= len(m.apps) {
+			m.appCursor = 0
+		}
+		m.actionLog = append(m.actionLog, logEntry("Synced apps from Mendix Platform"))
 		m.screen = screenDualPanel
 		return m, nil
 
@@ -42,12 +46,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.errMsg = "Failed to load branches: " + msg.err.Error()
 			m.screen = screenBranchAction
-		} else {
-			m.remoteBranches = msg.branches
-			m.remoteBranchCursor = 0
-			m.screen = screenRemoteBranchList
-			m.errMsg = ""
+			return m, clearMsgAfterCmd()
 		}
+		m.remoteBranches = msg.branches
+		m.remoteBranchCursor = 0
+		m.screen = screenRemoteBranchList
 		return m, nil
 
 	case branchOpDoneMsg:
@@ -57,6 +60,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.bgJobs[i].err = msg.err
 				if msg.err == nil {
 					_ = project.Open(msg.destDir)
+					m.actionLog = append(m.actionLog, logEntry(m.bgJobs[i].label+" — done"))
+				} else {
+					m.actionLog = append(m.actionLog, logEntry(m.bgJobs[i].label+" — failed: "+msg.err.Error()))
 				}
 				break
 			}
@@ -72,8 +78,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case clearErrMsgMsg:
+	case clearMsgMsg:
 		m.errMsg = ""
+		m.statusMsg = ""
 		return m, nil
 
 	case tea.KeyMsg:
@@ -81,6 +88,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func logEntry(msg string) string {
+	return fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), msg)
 }
 
 func (m model) hasRunningJobs() bool {
@@ -95,14 +106,13 @@ func (m model) hasRunningJobs() bool {
 func (m model) tryQuit() (tea.Model, tea.Cmd) {
 	if m.hasRunningJobs() {
 		m.errMsg = "Jobs still running, please wait..."
-		return m, clearErrMsgAfterCmd()
+		return m, clearMsgAfterCmd()
 	}
 	m.cancelCtx()
 	return m, tea.Quit
 }
 
 func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-
 	switch m.screen {
 	case screenLoading:
 		if msg.String() == "q" || msg.Type == tea.KeyCtrlC {
@@ -141,6 +151,7 @@ func (m model) updateDualPanel(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "o":
 		_ = config.Open(m.cfg)
+		m.actionLog = append(m.actionLog, logEntry("Opened config"))
 		return m, nil
 	case "l", "right":
 		if m.activePanel == panelApps {
@@ -201,8 +212,11 @@ func (m model) updateDualPanel(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			vPath := m.versions[m.versionCursor]
 			_ = version.Open(vPath)
-			m.statusMsg = "Opened " + filepath.Base(vPath)
+			name := filepath.Base(vPath)
+			m.statusMsg = "Opened " + name
 			m.errMsg = ""
+			m.actionLog = append(m.actionLog, logEntry("Opened version: "+name))
+			return m, clearMsgAfterCmd()
 		}
 	}
 
@@ -238,8 +252,11 @@ func (m model) updateSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else if m.activePanel == panelVersions && len(filteredVersions) > 0 {
 			vPath := filteredVersions[m.versionCursor]
 			_ = version.Open(vPath)
-			m.statusMsg = "Opened " + filepath.Base(vPath)
+			name := filepath.Base(vPath)
+			m.statusMsg = "Opened " + name
 			m.errMsg = ""
+			m.actionLog = append(m.actionLog, logEntry("Opened version: "+name))
+			return m, clearMsgAfterCmd()
 		}
 		return m, nil
 
@@ -281,14 +298,12 @@ func (m model) updateSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// All other keys (typing) go to the search input
 	oldQuery := m.searchInput.Value()
 	var cmd tea.Cmd
 	m.searchInput, cmd = m.searchInput.Update(msg)
 	newQuery := m.searchInput.Value()
 
 	if oldQuery != newQuery {
-		// Query changed — clamp cursors to the new filtered list sizes
 		filteredApps := search.SearchApps(m.apps, newQuery)
 		filteredVersions := search.FilterPaths(m.versions, newQuery)
 		if m.appCursor >= len(filteredApps) {
@@ -333,8 +348,11 @@ func (m model) updateBranchList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		branchPath := m.branches[m.branchCursor]
 		_ = project.Open(branchPath)
-		m.statusMsg = "Opened " + filepath.Base(branchPath)
+		name := filepath.Base(branchPath)
+		m.statusMsg = "Opened " + name
 		m.errMsg = ""
+		m.actionLog = append(m.actionLog, logEntry("Opened branch: "+name))
+		return m, clearMsgAfterCmd()
 	case "c":
 		m.branchActionCursor = 0
 		m.branchActionOrigin = screenBranchList
@@ -363,8 +381,11 @@ func (m model) updateBranchSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(filtered) > 0 {
 			branchPath := filtered[m.branchCursor]
 			_ = project.Open(branchPath)
-			m.statusMsg = "Opened " + filepath.Base(branchPath)
+			name := filepath.Base(branchPath)
+			m.statusMsg = "Opened " + name
 			m.errMsg = ""
+			m.actionLog = append(m.actionLog, logEntry("Opened branch: "+name))
+			return m, clearMsgAfterCmd()
 		}
 		return m, nil
 
@@ -420,11 +441,11 @@ func (m model) updateBranchAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if m.pat == "" {
 			m.errMsg = "MX_PAT not set. Run 'mx config' to configure it."
-			return m, nil
+			return m, clearMsgAfterCmd()
 		}
 		if m.selectedApp.AppID == "" {
 			m.errMsg = "App ID not found. Run 'mx sync' to refresh the app list."
-			return m, nil
+			return m, clearMsgAfterCmd()
 		}
 		m.screen = screenLoading
 		m.loadingMsg = "Loading remote branches..."
@@ -525,11 +546,13 @@ func (m model) selectRemoteBranch(name string) (tea.Model, tea.Cmd) {
 	if m.branchMode == branchModeCheckout {
 		jobID := m.nextJobID
 		m.nextJobID++
-		m.bgJobs = append(m.bgJobs, bgJob{id: jobID, label: "Checkout " + m.selectedApp.Name + " / " + name})
+		label := "Checkout " + m.selectedApp.Name + " / " + name
+		m.bgJobs = append(m.bgJobs, bgJob{id: jobID, label: label})
 		m.screen = screenDualPanel
 		m.searching = false
 		m.searchInput.Blur()
 		m.errMsg = ""
+		m.actionLog = append(m.actionLog, logEntry("Started checkout: "+m.selectedApp.Name+" / "+name))
 		return m, checkoutBranchCmd(m.ctx, m.wg, m.cfg, m.selectedApp, name, jobID)
 	}
 	m.selectedBase = name
@@ -561,14 +584,16 @@ func (m model) updateBranchNameInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		branchName := strings.TrimSpace(m.nameInput.Value())
 		if branchName == "" {
 			m.errMsg = "Branch name cannot be empty."
-			return m, nil
+			return m, clearMsgAfterCmd()
 		}
 		jobID := m.nextJobID
 		m.nextJobID++
-		m.bgJobs = append(m.bgJobs, bgJob{id: jobID, label: "Create " + m.selectedApp.Name + " / " + branchName})
+		label := "Create " + m.selectedApp.Name + " / " + branchName
+		m.bgJobs = append(m.bgJobs, bgJob{id: jobID, label: label})
 		m.screen = screenDualPanel
 		m.nameInput.Blur()
 		m.errMsg = ""
+		m.actionLog = append(m.actionLog, logEntry("Started create: "+m.selectedApp.Name+" / "+branchName))
 		return m, createBranchCmd(m.ctx, m.wg, m.cfg, m.selectedApp, branchName, m.selectedBase, jobID)
 	}
 	var cmd tea.Cmd
