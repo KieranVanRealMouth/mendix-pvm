@@ -208,6 +208,10 @@ func checkoutBranchCmd(ctx context.Context, wg *sync.WaitGroup, cfg *config.Conf
 		destDir := filepath.Join(cfg.ProjectDirectory, app.Name+"-"+safeBranch)
 		var errBuf bytes.Buffer
 		err := branch.Checkout(ctx, app, branchName, destDir, io.Discard, &errBuf)
+		if ctx.Err() != nil {
+			os.RemoveAll(destDir)
+			return branchOpDoneMsg{jobID: jobID, err: ctx.Err()}
+		}
 		if err != nil {
 			return branchOpDoneMsg{jobID: jobID, err: fmt.Errorf("%w\n%s", err, strings.TrimSpace(errBuf.String()))}
 		}
@@ -223,6 +227,10 @@ func createBranchCmd(ctx context.Context, wg *sync.WaitGroup, cfg *config.Config
 		err := branch.Create(ctx, cfg, app, branchName, baseBranch, io.Discard, &errBuf)
 		safeBranch := strings.ReplaceAll(branchName, "/", "_")
 		destDir := filepath.Join(cfg.ProjectDirectory, app.Name+"-"+safeBranch)
+		if ctx.Err() != nil {
+			os.RemoveAll(destDir)
+			return branchOpDoneMsg{jobID: jobID, err: ctx.Err()}
+		}
 		if err != nil {
 			return branchOpDoneMsg{jobID: jobID, err: fmt.Errorf("%w\n%s", err, strings.TrimSpace(errBuf.String()))}
 		}
