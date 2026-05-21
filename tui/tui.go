@@ -63,6 +63,7 @@ type branchOpDoneMsg struct {
 }
 
 type clearJobMsg struct{ id int }
+type clearErrMsgMsg struct{}
 
 // bgJob tracks a background branch operation displayed in the footer.
 type bgJob struct {
@@ -236,6 +237,13 @@ func createBranchCmd(ctx context.Context, wg *sync.WaitGroup, cfg *config.Config
 			return branchOpDoneMsg{jobID: jobID, err: fmt.Errorf("%w\n%s", err, strings.TrimSpace(errBuf.String()))}
 		}
 		return branchOpDoneMsg{jobID: jobID, destDir: destDir}
+	}
+}
+
+func clearErrMsgAfterCmd() tea.Cmd {
+	return func() tea.Msg {
+		time.Sleep(5 * time.Second)
+		return clearErrMsgMsg{}
 	}
 }
 

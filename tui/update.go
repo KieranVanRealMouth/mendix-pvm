@@ -72,6 +72,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case clearErrMsgMsg:
+		m.errMsg = ""
+		return m, nil
+
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	}
@@ -91,7 +95,7 @@ func (m model) hasRunningJobs() bool {
 func (m model) tryQuit() (tea.Model, tea.Cmd) {
 	if m.hasRunningJobs() {
 		m.errMsg = "Jobs still running, please wait..."
-		return m, nil
+		return m, clearErrMsgAfterCmd()
 	}
 	m.cancelCtx()
 	return m, tea.Quit
