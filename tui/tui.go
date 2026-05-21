@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -74,6 +75,7 @@ type model struct {
 	pat       string
 	ctx       context.Context
 	cancelCtx context.CancelFunc
+	wg        *sync.WaitGroup
 
 	screen      screen
 	activePanel activePanel
@@ -105,20 +107,20 @@ type model struct {
 	nameInput textinput.Model
 
 	// Inline search (s key in dual panel, branch list, and remote branch list)
-	searching                bool
-	searchInput              textinput.Model
-	savedAppCursor           int
-	savedVersionCursor       int
-	savedBranchCursor        int
-	savedRemoteBranchCursor  int
+	searching               bool
+	searchInput             textinput.Model
+	savedAppCursor          int
+	savedVersionCursor      int
+	savedBranchCursor       int
+	savedRemoteBranchCursor int
 
 	// Loading
 	spinner    spinner.Model
 	loadingMsg string
 
 	// Background jobs shown in footer
-	bgJobs        []bgJob
-	nextJobID     int
+	bgJobs         []bgJob
+	nextJobID      int
 	confirmingQuit bool
 
 	// Inline error / status
@@ -146,18 +148,21 @@ func Run(cfg *config.Config) error {
 	si.CharLimit = 60
 
 	ctx, cancel := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+
 	m := model{
-		cfg:       cfg,
-		pat:       pat,
-		ctx:       ctx,
-		cancelCtx: cancel,
+		cfg:         cfg,
+		pat:         pat,
+		ctx:         ctx,
+		cancelCtx:   cancel,
+		wg:          &wg,
 		apps:        append([]config.App{}, cfg.Apps...),
 		versions:    versions,
 		spinner:     sp,
 		nameInput:   ti,
 		searchInput: si,
-		width:     80,
-		height:    24,
+		width:       80,
+		height:      24,
 	}
 
 	if len(m.apps) == 0 {
@@ -174,6 +179,8 @@ func Run(cfg *config.Config) error {
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err := p.Run()
+	cancel()
+	wg.Wait()
 	return err
 }
 
@@ -193,8 +200,10 @@ func getBranchesCmd(ctx context.Context, pat, appID string) tea.Cmd {
 	}
 }
 
-func checkoutBranchCmd(ctx context.Context, cfg *config.Config, app config.App, branchName string, jobID int) tea.Cmd {
+func checkoutBranchCmd(ctx context.Context, wg *sync.WaitGroup, cfg *config.Config, app config.App, branchName string, jobID int) tea.Cmd {
+	wg.Add(1)
 	return func() tea.Msg {
+		defer wg.Done()
 		safeBranch := strings.ReplaceAll(branchName, "/", "_")
 		destDir := filepath.Join(cfg.ProjectDirectory, app.Name+"-"+safeBranch)
 		var errBuf bytes.Buffer
@@ -206,8 +215,10 @@ func checkoutBranchCmd(ctx context.Context, cfg *config.Config, app config.App, 
 	}
 }
 
-func createBranchCmd(ctx context.Context, cfg *config.Config, app config.App, branchName, baseBranch string, jobID int) tea.Cmd {
+func createBranchCmd(ctx context.Context, wg *sync.WaitGroup, cfg *config.Config, app config.App, branchName, baseBranch string, jobID int) tea.Cmd {
+	wg.Add(1)
 	return func() tea.Msg {
+		defer wg.Done()
 		var errBuf bytes.Buffer
 		err := branch.Create(ctx, cfg, app, branchName, baseBranch, io.Discard, &errBuf)
 		safeBranch := strings.ReplaceAll(branchName, "/", "_")

@@ -536,7 +536,7 @@ func (m model) selectRemoteBranch(name string) (tea.Model, tea.Cmd) {
 		m.searching = false
 		m.searchInput.Blur()
 		m.errMsg = ""
-		return m, checkoutBranchCmd(m.ctx, m.cfg, m.selectedApp, name, jobID)
+		return m, checkoutBranchCmd(m.ctx, m.wg, m.cfg, m.selectedApp, name, jobID)
 	}
 	m.selectedBase = name
 	m.screen = screenBranchNameInput
@@ -575,7 +575,7 @@ func (m model) updateBranchNameInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.screen = screenDualPanel
 		m.nameInput.Blur()
 		m.errMsg = ""
-		return m, createBranchCmd(m.ctx, m.cfg, m.selectedApp, branchName, m.selectedBase, jobID)
+		return m, createBranchCmd(m.ctx, m.wg, m.cfg, m.selectedApp, branchName, m.selectedBase, jobID)
 	}
 	var cmd tea.Cmd
 	m.nameInput, cmd = m.nameInput.Update(msg)
