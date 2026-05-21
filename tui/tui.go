@@ -70,9 +70,10 @@ type bgJob struct {
 }
 
 type model struct {
-	cfg *config.Config
-	pat string
-	ctx context.Context
+	cfg       *config.Config
+	pat       string
+	ctx       context.Context
+	cancelCtx context.CancelFunc
 
 	screen      screen
 	activePanel activePanel
@@ -144,10 +145,12 @@ func Run(cfg *config.Config) error {
 	si.Placeholder = "search apps and versions..."
 	si.CharLimit = 60
 
+	ctx, cancel := context.WithCancel(context.Background())
 	m := model{
 		cfg:       cfg,
 		pat:       pat,
-		ctx:       context.Background(),
+		ctx:       ctx,
+		cancelCtx: cancel,
 		apps:        append([]config.App{}, cfg.Apps...),
 		versions:    versions,
 		spinner:     sp,

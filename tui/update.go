@@ -93,6 +93,7 @@ func (m model) tryQuit() (tea.Model, tea.Cmd) {
 		m.confirmingQuit = true
 		return m, nil
 	}
+	m.cancelCtx()
 	return m, tea.Quit
 }
 
@@ -100,6 +101,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.confirmingQuit {
 		switch msg.String() {
 		case "y", "Y", "q", "ctrl+c":
+			m.cancelCtx()
 			return m, tea.Quit
 		default:
 			m.confirmingQuit = false

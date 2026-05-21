@@ -119,6 +119,7 @@ func Checkout(ctx context.Context, app config.App, branchName, destDir string, s
 	gitCmd.Stdout = stdout
 	gitCmd.Stderr = stderr
 	if err := gitCmd.Run(); err != nil {
+		os.RemoveAll(destDir)
 		return fmt.Errorf("git clone failed: %w", err)
 	}
 
@@ -163,6 +164,7 @@ func Create(ctx context.Context, cfg *config.Config, app config.App, branchName,
 	if branchExists {
 		fmt.Fprintf(stdout, "Branch %q already exists on remote. Cloning into:\n  %s\n", branchName, destDir)
 		if err := Checkout(ctx, app, branchName, destDir, stdout, stderr); err != nil {
+			os.RemoveAll(destDir)
 			return err
 		}
 		fmt.Fprintf(stdout, "Done. Branch available at: %s\n", destDir)
