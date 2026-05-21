@@ -116,8 +116,9 @@ type model struct {
 	loadingMsg string
 
 	// Background jobs shown in footer
-	bgJobs    []bgJob
-	nextJobID int
+	bgJobs        []bgJob
+	nextJobID     int
+	confirmingQuit bool
 
 	// Inline error / status
 	errMsg    string

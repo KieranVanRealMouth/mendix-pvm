@@ -79,11 +79,36 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m model) hasRunningJobs() bool {
+	for _, j := range m.bgJobs {
+		if !j.done {
+			return true
+		}
+	}
+	return false
+}
+
+func (m model) tryQuit() (tea.Model, tea.Cmd) {
+	if m.hasRunningJobs() {
+		m.confirmingQuit = true
+		return m, nil
+	}
+	return m, tea.Quit
+}
+
 func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.confirmingQuit {
+		if msg.String() == "y" || msg.String() == "Y" {
+			return m.tryQuit()
+		}
+		m.confirmingQuit = false
+		return m, nil
+	}
+
 	switch m.screen {
 	case screenLoading:
 		if msg.String() == "q" || msg.Type == tea.KeyCtrlC {
-			return m, tea.Quit
+			return m.tryQuit()
 		}
 	case screenDualPanel:
 		return m.updateDualPanel(msg)
@@ -106,7 +131,7 @@ func (m model) updateDualPanel(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch msg.String() {
 	case "q", "ctrl+c":
-		return m, tea.Quit
+		return m.tryQuit()
 	case "s":
 		m.searching = true
 		m.savedAppCursor = m.appCursor
@@ -189,7 +214,7 @@ func (m model) updateDualPanel(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) updateSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyCtrlC:
-		return m, tea.Quit
+		return m.tryQuit()
 
 	case tea.KeyEsc:
 		m.searching = false
@@ -286,7 +311,7 @@ func (m model) updateBranchList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch msg.String() {
 	case "q", "ctrl+c":
-		return m, tea.Quit
+		return m.tryQuit()
 	case "esc":
 		m.screen = screenDualPanel
 		m.errMsg = ""
@@ -324,7 +349,7 @@ func (m model) updateBranchList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) updateBranchSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyCtrlC:
-		return m, tea.Quit
+		return m.tryQuit()
 
 	case tea.KeyEsc:
 		m.searching = false
@@ -377,7 +402,7 @@ func (m model) updateBranchSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) updateBranchAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "ctrl+c":
-		return m, tea.Quit
+		return m.tryQuit()
 	case "esc":
 		m.screen = m.branchActionOrigin
 		m.errMsg = ""
@@ -418,7 +443,7 @@ func (m model) updateRemoteBranchList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch msg.String() {
 	case "q", "ctrl+c":
-		return m, tea.Quit
+		return m.tryQuit()
 	case "esc":
 		m.screen = screenBranchAction
 		m.errMsg = ""
@@ -448,7 +473,7 @@ func (m model) updateRemoteBranchList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) updateRemoteBranchSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyCtrlC:
-		return m, tea.Quit
+		return m.tryQuit()
 
 	case tea.KeyEsc:
 		m.searching = false
@@ -528,7 +553,7 @@ func remoteBranchNames(branches []platform.Branch) []string {
 func (m model) updateBranchNameInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyCtrlC:
-		return m, tea.Quit
+		return m.tryQuit()
 	case tea.KeyEsc:
 		m.screen = screenRemoteBranchList
 		m.nameInput.Blur()

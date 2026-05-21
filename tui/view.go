@@ -10,21 +10,25 @@ import (
 )
 
 func (m model) View() string {
+	var content string
 	switch m.screen {
 	case screenLoading:
-		return m.viewLoading()
+		content = m.viewLoading()
 	case screenDualPanel:
-		return m.viewDualPanel()
+		content = m.viewDualPanel()
 	case screenBranchList:
-		return m.viewBranchList()
+		content = m.viewBranchList()
 	case screenBranchAction:
-		return m.viewBranchAction()
+		content = m.viewBranchAction()
 	case screenRemoteBranchList:
-		return m.viewRemoteBranchList()
+		content = m.viewRemoteBranchList()
 	case screenBranchNameInput:
-		return m.viewBranchNameInput()
+		content = m.viewBranchNameInput()
 	}
-	return ""
+	if m.confirmingQuit {
+		content += errorStyle.Render("Jobs are still running. Quit anyway? (y/n)")
+	}
+	return content
 }
 
 func (m model) viewLoading() string {
